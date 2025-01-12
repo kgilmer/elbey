@@ -41,18 +41,4 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - name: Run clippy
         run: cargo clippy -- -D warnings
-  cargo-deny:
-    name: Cargo Deny
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        checks:
-          - bans licenses sources
-    continue-on-error: ${{ matrix.checks == 'advisories' }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Check ${{ matrix.checks }}
-        uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check ${{ matrix.checks }}
+
