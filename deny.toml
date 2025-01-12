@@ -1,0 +1,10 @@
+[licenses]
+allow = [
+	"Apache-2.0",
+	"BSD-2-Clause",
+	"MIT"
+]
+exceptions = [
+	{ allow = ["AGPL-3.0"], name = "aoc" },
+	{ allow = ["Unicode-3.0"], name = "unicode-ident" },
+]
