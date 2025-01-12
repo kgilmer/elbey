@@ -28,12 +28,14 @@ jobs:
         run: cargo clean --doc
       - name: Build docs
         run: cargo doc --no-deps
+      - name: Add redirect
+        run: echo '<meta http-equiv="refresh" content="0; url=albey">' > target/doc/index.html
       - name: Remove lock file
         run: rm target/doc/.lock
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: target/doc/elbey
+          path: target/doc
   deploy:
     name: Deploy
     environment:
@@ -45,4 +47,3 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-
