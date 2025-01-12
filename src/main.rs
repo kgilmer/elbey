@@ -1,4 +1,5 @@
 //! Elbey - a bare bones desktop app launcher
+#![doc(html_logo_url = "https://github.com/kgilmer/elbey/blob/main/elbey.svg")]
 mod app;
 
 use std::process::exit;
