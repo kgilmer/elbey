@@ -1,12 +1,10 @@
 # `elbey`
 
-<img align="right" src="elbey.svg">
+<img align="right" src="elbey.svg" alt="logo">
 
 A basic [desktop app](https://www.freedesktop.org/wiki/Specifications/desktop-entry-spec/) launcher implemented in Rust on [the `iced` UI framework](https://github.com/iced-rs/iced).  This project is intentionally simple and "low abstraction" to aid in discovery and experimentation.
 
 ## Status
-
-<img align="right" src="screenshot.png">
 
 The application is functional in that desktop apps can be launched from the dialog.  There is no caching, modes, persistent memory, custom theming, or other fancy features.  But, you can add them yourself if you want!
 
@@ -19,6 +17,8 @@ There are a [few unit tests](https://github.com/kgilmer/elbey/blob/main/src/app.
 The `rustdoc` is available here: [https://kgilmer.github.io/elbey](https://kgilmer.github.io/elbey)
 
 ## Get it
+
+<img align="left" src="screenshot.png" alt="Screenshot">
 
 Elbey is only distributed via source here.
 
