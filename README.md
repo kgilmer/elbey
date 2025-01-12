@@ -1,6 +1,6 @@
-<img align="left" src="elbey.svg" alt="logo">
-
 # `elbey`
+
+<img align="left" src="elbey.svg" alt="logo">
 
 A basic [desktop app](https://www.freedesktop.org/wiki/Specifications/desktop-entry-spec/) launcher implemented in Rust on [the `iced` UI framework](https://github.com/iced-rs/iced).  This project is intentionally simple and "low abstraction" to aid in discovery and experimentation.
 
