@@ -34,7 +34,6 @@ pub struct Elbey {
     flags: ElbeyFlags,
 }
 
-
 /// Messages are how your logic mutates the app state and GUI
 #[derive(Debug, Clone)]
 pub enum ElbeyMessage {
