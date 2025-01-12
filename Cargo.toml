@@ -1,0 +1,13 @@
+[package]
+name = "elbey"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.95"
+dirs = "5.0.1"
+freedesktop-desktop-entry = "0.7.5"
+iced = { version = "0.13.1", features = ["wgpu"] }
+iced_core = "0.13.2"
+iced_runtime = "0.13.2"
+shell-words = "^1"
