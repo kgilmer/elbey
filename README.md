@@ -2,11 +2,22 @@
 
 <img align="left" src="elbey.svg" alt="logo">
 
-A basic [desktop app](https://www.freedesktop.org/wiki/Specifications/desktop-entry-spec/) launcher implemented in Rust on [the `iced` UI framework](https://github.com/iced-rs/iced).  This project is intentionally simple and "low abstraction" to aid in discovery and experimentation.
+A basic [desktop app](https://www.freedesktop.org/wiki/Specifications/desktop-entry-spec/) launcher implemented in Rust on [the `iced` UI framework](https://github.com/iced-rs/iced) for Linux.  This project is intentionally simple and "low abstraction" to aid in discovery and experimentation.  Upon launch, the program lists all of the locally installed desktop apps with a filter widget set above.  To launch, hit `enter` on the selected item, or use the mouse.
 
 ## Status
 
 The application is functional in that desktop apps can be launched from the dialog.  There is no caching, modes, persistent memory, custom theming, or other fancy features.  But, you can add them yourself if you want!
+
+## Feature Ideas
+
+Things that might be fun to add to `ebley`:
+
+* Sort the entries by usage or name
+* Implement page up and page down
+* Add caching to speed up retrieval of the apps
+* Show app icons in addition to the titles
+* Allow theme to be selected from the command line
+* Allow for custom themes
 
 ## Tests
 
