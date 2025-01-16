@@ -23,8 +23,7 @@ static ITEMS_WIDGET_ID: LazyLock<iced::widget::scrollable::Id> =
 pub struct State {
     entry: String, // A text entry box where a user can enter list filter criteria
     apps: Vec<DesktopEntry<'static>>, // The complete list of DesktopEntry, as retrieved by lib
-    view: Vec<DesktopEntry<'static>>, // The subset of items visible to the user after any text filtering from `entry`
-    selected_index: usize,            // The index of the item visibly selected in the UI
+    selected_index: usize, // The index of the item visibly selected in the UI
 }
 
 /// Root struct of application
@@ -82,7 +81,6 @@ impl Elbey {
                 state: State {
                     entry: String::new(),
                     apps: vec![],
-                    view: vec![],
                     selected_index: 0,
                 },
                 flags: flags.clone(),
@@ -98,8 +96,9 @@ impl Elbey {
         // Create the list UI elements based on the `DesktopEntry` model
         let app_elements: Vec<Element<ElbeyMessage>> = self
             .state
-            .view
+            .apps
             .iter()
+            .filter(|e| Self::text_entry_filter(e, &self.state))
             .enumerate()
             .map(|(index, entry)| {
                 let name = entry.desktop_entry("Name").unwrap_or("err");
@@ -119,6 +118,7 @@ impl Elbey {
             .collect();
 
         // Bare bones!
+        // TODO: Fancier layout?
         column![
             text_input("drun", &self.state.entry)
                 .id(ENTRY_WIDGET_ID.clone())
@@ -137,34 +137,18 @@ impl Elbey {
             // The model has been loaded, initialize the UI
             ElbeyMessage::ModelLoaded(items) => {
                 self.state.apps = items;
-                self.state.apps.clone_into(&mut self.state.view);
                 text_input::focus::<ElbeyMessage>(ENTRY_WIDGET_ID.clone())
             }
             // Rebuild the select list based on the updated text entry
             ElbeyMessage::EntryUpdate(entry_text) => {
                 self.state.entry = entry_text;
                 self.state.selected_index = 0;
-                if self.state.entry.is_empty() {
-                    self.state.apps.clone_into(&mut self.state.view);
-                } else {
-                    let filtered = self
-                        .state
-                        .apps
-                        .iter()
-                        .filter(|e| {
-                            let name = e.desktop_entry("Name").unwrap_or("err");
-                            name.to_lowercase()
-                                .contains(&self.state.entry.to_lowercase())
-                        })
-                        .cloned()
-                        .collect::<Vec<_>>();
-                    filtered.clone_into(&mut self.state.view)
-                }
+
                 Task::none()
             }
             // Launch an application selected by the user
             ElbeyMessage::ExecuteSelected() => {
-                if let Some(entry) = self.state.view.get(self.state.selected_index) {
+                if let Some(entry) = self.selected_entry() {
                     (self.flags.app_launcher)(entry).expect("Failed to launch app");
                 }
                 Task::none()
@@ -175,12 +159,9 @@ impl Elbey {
                 Key::Named(Named::ArrowUp) => self.navigate_items(-1),
                 Key::Named(Named::ArrowDown) => self.navigate_items(1),
                 Key::Named(Named::Enter) => {
-                    let target = self
-                        .state
-                        .view
-                        .get(self.state.selected_index)
-                        .expect("Element doesn't exist");
-                    (self.flags.app_launcher)(target).expect("Failed to launch app");
+                    if let Some(entry) = self.selected_entry() {
+                        (self.flags.app_launcher)(entry).expect("Failed to launch app");
+                    }
                     Task::none()
                 }
                 _ => Task::none(),
@@ -210,11 +191,26 @@ impl Elbey {
         })
     }
 
-    // Change the selected item and update the UI with the returned `Command`
+    // Return ref to the selected item from the app list after applying filter
+    fn selected_entry(&self) -> Option<&DesktopEntry> {
+        self.state
+            .apps
+            .iter()
+            .filter(|e| Self::text_entry_filter(e, &self.state))
+            .nth(self.state.selected_index)
+    }
+
+    // Change the selected item and update the UI with the returned `Task`
     fn navigate_items(&mut self, delta: i32) -> iced::Task<ElbeyMessage> {
         let new_index = (self.state.selected_index as i32 + delta) as usize;
+        let size = self
+            .state
+            .apps
+            .iter()
+            .filter(|e| Self::text_entry_filter(e, &self.state))
+            .count();
 
-        if (0..self.state.view.len()).contains(&new_index) {
+        if (0..size).contains(&new_index) {
             self.state.selected_index = new_index;
 
             snap_to::<ElbeyMessage>(
@@ -226,6 +222,15 @@ impl Elbey {
             )
         } else {
             Task::none() // If the new location is out of bounds, ignore
+        }
+    }
+
+    // Compute the items in the list to display based on the model
+    fn text_entry_filter(entry: &DesktopEntry, model: &State) -> bool {
+        if let Some(name) = entry.desktop_entry("Name") {
+            name.to_lowercase().contains(&model.entry.to_lowercase())
+        } else {
+            false
         }
     }
 }
