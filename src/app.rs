@@ -22,9 +22,9 @@ static ITEMS_WIDGET_ID: LazyLock<iced::widget::scrollable::Id> =
 #[derive(Debug)]
 pub struct State {
     /// A text entry box where a user can enter list filter criteria
-    entry: String, 
+    entry: String,
     /// The complete list of DesktopEntry, as retrieved by lib
-    apps: Vec<DesktopEntry<'static>>, 
+    apps: Vec<DesktopEntry<'static>>,
     /// The index of the item visibly selected in the UI
     selected_index: usize,
     received_focus: bool,
@@ -164,7 +164,7 @@ impl Elbey {
                 _ => Task::none(),
             },
             // Handle window events
-            ElbeyMessage::GainedFocus => { 
+            ElbeyMessage::GainedFocus => {
                 self.state.received_focus = true;
                 Task::none()
             }
