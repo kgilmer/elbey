@@ -21,9 +21,13 @@ static ITEMS_WIDGET_ID: LazyLock<iced::widget::scrollable::Id> =
 /// The application model type.  See [the iced book](https://book.iced.rs/) for details.
 #[derive(Debug)]
 pub struct State {
-    entry: String, // A text entry box where a user can enter list filter criteria
-    apps: Vec<DesktopEntry<'static>>, // The complete list of DesktopEntry, as retrieved by lib
-    selected_index: usize, // The index of the item visibly selected in the UI
+    /// A text entry box where a user can enter list filter criteria
+    entry: String, 
+    /// The complete list of DesktopEntry, as retrieved by lib
+    apps: Vec<DesktopEntry<'static>>, 
+    /// The index of the item visibly selected in the UI
+    selected_index: usize,
+    received_focus: bool,
 }
 
 /// Root struct of application
@@ -36,25 +40,17 @@ pub struct Elbey {
 /// Messages are how your logic mutates the app state and GUI
 #[derive(Debug, Clone)]
 pub enum ElbeyMessage {
-    /**
-     * Signals that the `DesktopEntries` have been fully loaded into the vec.
-     */
+    /// Signals that the `DesktopEntries` have been fully loaded into the vec
     ModelLoaded(Vec<DesktopEntry<'static>>),
-    /**
-     * Signals that the primary text edit box on the UI has been changed by the user, including the new text.
-     */
+    /// Signals that the primary text edit box on the UI has been changed by the user, including the new text.
     EntryUpdate(String),
-    /**
-     * Signals that the user has taken primary action on a selection.  In the case of a desktop app launcher, the app is launched.
-     */
+    /// Signals that the user has taken primary action on a selection.  In the case of a desktop app launcher, the app is launched.
     ExecuteSelected(),
-    /**
-     * Signals that the user has pressed a key.
-     */
+    /// Signals that the user has pressed a key
     KeyEvent(Key),
-    /**
-     * Signals that the window has lost focus.
-     */
+    /// Signals that the window has gained focus
+    GainedFocus,
+    /// Signals that the window has lost focus
     LostFocus,
 }
 
@@ -82,6 +78,7 @@ impl Elbey {
                     entry: String::new(),
                     apps: vec![],
                     selected_index: 0,
+                    received_focus: false,
                 },
                 flags: flags.clone(),
             },
@@ -167,9 +164,15 @@ impl Elbey {
                 _ => Task::none(),
             },
             // Handle window events
+            ElbeyMessage::GainedFocus => { 
+                self.state.received_focus = true;
+                Task::none()
+            }
             ElbeyMessage::LostFocus => {
-                // iced::window::close(window::Id::MAIN)
-                exit(0);
+                if self.state.received_focus {
+                    exit(0);
+                }
+                Task::none()
             }
         }
     }
@@ -178,6 +181,7 @@ impl Elbey {
     pub fn subscription(&self) -> iced::Subscription<ElbeyMessage> {
         // Framework code to integrate with underlying user interface devices; keyboard, mouse.
         event::listen_with(|event, _status, _| match event {
+            Event::Window(window::Event::Focused) => Some(ElbeyMessage::GainedFocus),
             Event::Window(window::Event::Unfocused) => Some(ElbeyMessage::LostFocus),
             Event::Keyboard(iced::keyboard::Event::KeyPressed {
                 modifiers: _,
