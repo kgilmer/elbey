@@ -27,6 +27,7 @@ pub struct State {
     apps: Vec<DesktopEntry<'static>>,
     /// The index of the item visibly selected in the UI
     selected_index: usize,
+    /// A flag to indicate app window has received focus. Work around to some windowing environments passing `unfocused` unexpectedly.
     received_focus: bool,
 }
 
@@ -68,7 +69,7 @@ pub struct ElbeyFlags {
 }
 
 impl Elbey {
-    /// Initialize the app.  Only notable item here is probably the return type Command<_> and what we pass
+    /// Initialize the app.  Only notable item here is probably the return type Task<ElbeyMessage> and what we pass
     /// back.  Here, within the async execution, we directly call the library to retrieve `DesktopEntry`'s which
     /// are the primary model of the [XDG Desktop Specification](https://www.freedesktop.org/wiki/Specifications/desktop-entry-spec/).
     pub fn new(flags: ElbeyFlags) -> (Self, Task<ElbeyMessage>) {
