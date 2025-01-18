@@ -16,42 +16,52 @@ static PROGRAM_NAME: LazyLock<String> = std::sync::LazyLock::new(|| String::from
 
 /// Program entrypoint.  Just configures the app, window, and kicks off the iced runtime.
 fn main() -> iced::Result {
+    // UI settings
+    let iced_settings = iced::settings::Settings {
+        id: Some(PROGRAM_NAME.to_string()),
+        fonts: vec![],
+        default_font: Font::DEFAULT,
+        default_text_size: Pixels::from(18),
+        antialiasing: true,
+    };
+
+    // Window settings
+    let window_settings = window::Settings {
+        size: Size {
+            width: 320.0,
+            height: 200.0,
+        },
+        position: window::Position::Centered,
+        min_size: None,
+        max_size: None,
+        visible: true,
+        resizable: false,
+        decorations: false,
+        transparent: false,
+        level: Default::default(),
+        icon: None,
+        platform_specific: PlatformSpecific {
+            application_id: PROGRAM_NAME.to_string(),
+            override_redirect: false,
+        },
+        exit_on_close_request: true,
+    };
+
+    // A function that returns the app struct
+    let app_factory = || {
+        Elbey::new(ElbeyFlags {
+            apps_loader: load_apps,
+            app_launcher: launch_app,
+        })
+    };
+
+    // Kick off iced GUI
     iced::application(PROGRAM_NAME.as_str(), Elbey::update, Elbey::view)
-        .settings(iced::settings::Settings {
-            id: Some(PROGRAM_NAME.to_string()),
-            fonts: vec![],
-            default_font: Font::DEFAULT,
-            default_text_size: Pixels::from(18),
-            antialiasing: true,
-        })
-        .window(window::Settings {
-            size: Size {
-                width: 320.0,
-                height: 200.0,
-            },
-            position: window::Position::Centered,
-            min_size: None,
-            max_size: None,
-            visible: true,
-            resizable: false,
-            decorations: false,
-            transparent: false,
-            level: Default::default(),
-            icon: None,
-            platform_specific: PlatformSpecific {
-                application_id: PROGRAM_NAME.to_string(),
-                override_redirect: false,
-            },
-            exit_on_close_request: true,
-        })
+        .settings(iced_settings)
+        .window(window_settings)
         .theme(|_| Theme::Nord)
         .subscription(Elbey::subscription)
-        .run_with(|| {
-            Elbey::new(ElbeyFlags {
-                apps_loader: load_apps,
-                app_launcher: launch_app,
-            })
-        })
+        .run_with(app_factory)
 }
 
 /// Launch an app described by `entry`.  This implementation exits the process upon successful launch.
