@@ -4,7 +4,6 @@ mod app;
 
 use std::process::exit;
 use std::sync::LazyLock;
-use std::time::Instant;
 
 use anyhow::Context;
 use app::{Elbey, ElbeyFlags};
@@ -79,15 +78,9 @@ fn launch_app(entry: &DesktopEntry) -> anyhow::Result<()> {
 
 /// Load DesktopEntry's from `DesktopIter`
 fn load_apps() -> Vec<DesktopEntry> {
-    let before = Instant::now();
-
     let locales = get_languages_from_env();
 
-    let rv = Iter::new(default_paths())
+    Iter::new(default_paths())
         .entries(Some(&locales))
-        .collect::<Vec<_>>();
-
-    println!("Elapsed time: {:.2?}", before.elapsed());
-
-    rv
+        .collect::<Vec<_>>()
 }
