@@ -24,7 +24,7 @@ pub struct State {
     /// A text entry box where a user can enter list filter criteria
     entry: String,
     /// The complete list of DesktopEntry, as retrieved by lib
-    apps: Vec<DesktopEntry<'static>>,
+    apps: Vec<DesktopEntry>,
     /// The index of the item visibly selected in the UI
     selected_index: usize,
     received_focus: bool,
@@ -41,7 +41,7 @@ pub struct Elbey {
 #[derive(Debug, Clone)]
 pub enum ElbeyMessage {
     /// Signals that the `DesktopEntries` have been fully loaded into the vec
-    ModelLoaded(Vec<DesktopEntry<'static>>),
+    ModelLoaded(Vec<DesktopEntry>),
     /// Signals that the primary text edit box on the UI has been changed by the user, including the new text.
     EntryUpdate(String),
     /// Signals that the user has taken primary action on a selection.  In the case of a desktop app launcher, the app is launched.
@@ -60,7 +60,7 @@ pub struct ElbeyFlags {
     /**
      * A function that returns a list of `DesktopEntry`s
      */
-    pub apps_loader: fn() -> Vec<DesktopEntry<'static>>,
+    pub apps_loader: fn() -> Vec<DesktopEntry>,
     /**
      * A function that launches a process from a `DesktopEntry`
      */
@@ -243,16 +243,16 @@ impl Elbey {
 mod tests {
     use super::*;
 
-    static EMPTY_LOADER: fn() -> Vec<DesktopEntry<'static>> = || vec![];
+    static EMPTY_LOADER: fn() -> Vec<DesktopEntry> = || vec![];
 
     static TEST_DESKTOP_ENTRY_1: LazyLock<DesktopEntry> =
-        std::sync::LazyLock::new(|| DesktopEntry::from_appid("test_app_id_1"));
+        std::sync::LazyLock::new(|| DesktopEntry::from_appid(String::from("test_app_id_1")));
     static TEST_DESKTOP_ENTRY_2: LazyLock<DesktopEntry> =
-        std::sync::LazyLock::new(|| DesktopEntry::from_appid("test_app_id_2"));
+        std::sync::LazyLock::new(|| DesktopEntry::from_appid(String::from("test_app_id_2")));
     static TEST_DESKTOP_ENTRY_3: LazyLock<DesktopEntry> =
-        std::sync::LazyLock::new(|| DesktopEntry::from_appid("test_app_id_3"));
+        std::sync::LazyLock::new(|| DesktopEntry::from_appid(String::from("test_app_id_3")));
 
-    static TEST_ENTRY_LOADER: fn() -> Vec<DesktopEntry<'static>> = || {
+    static TEST_ENTRY_LOADER: fn() -> Vec<DesktopEntry> = || {
         vec![
             TEST_DESKTOP_ENTRY_1.clone(),
             TEST_DESKTOP_ENTRY_2.clone(),
