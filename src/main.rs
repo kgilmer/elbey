@@ -4,10 +4,11 @@ mod app;
 
 use std::process::exit;
 use std::sync::LazyLock;
+use std::time::Instant;
 
 use anyhow::Context;
 use app::{Elbey, ElbeyFlags};
-use freedesktop_desktop_entry::{default_paths, DesktopEntry, Iter as DesktopIter};
+use freedesktop_desktop_entry::{default_paths, get_languages_from_env, DesktopEntry, Iter};
 use iced::window;
 use iced::{window::settings::PlatformSpecific, Theme};
 use iced_core::{Font, Pixels, Size};
@@ -77,9 +78,16 @@ fn launch_app(entry: &DesktopEntry) -> anyhow::Result<()> {
 }
 
 /// Load DesktopEntry's from `DesktopIter`
-fn load_apps() -> Vec<DesktopEntry<'static>> {
-    DesktopIter::new(default_paths())
-        .map(|path| DesktopEntry::from_path::<String>(path, None))
-        .filter_map(|entry_result| entry_result.ok())
-        .collect()
+fn load_apps() -> Vec<DesktopEntry> {
+    let before = Instant::now();
+
+    let locales = get_languages_from_env();
+
+    let rv = Iter::new(default_paths())
+        .entries(Some(&locales))
+        .collect::<Vec<_>>();
+
+    println!("Elapsed time: {:.2?}", before.elapsed());
+
+    rv
 }
