@@ -7,16 +7,20 @@ use iced::widget::button::{primary, text};
 use iced::widget::scrollable::{snap_to, RelativeOffset};
 use iced::widget::{button, column, scrollable, text_input, Column};
 use iced::{event, window, Element, Event, Length, Task};
-use iced_core::keyboard::key::Named;
-use iced_core::keyboard::Key;
+use iced::keyboard::key::Named;
+use iced::keyboard::Key;
+use iced::platform_specific::shell::commands::layer_surface::get_layer_surface;
+use iced::platform_specific::shell::commands::{
+    overlap_notify::overlap_notify,
+};
 
 /// A magic value to calculate relative pixel hight to move one item in the scrollable
 const ITEM_HEIGHT_SCALE_FACTOR: f32 = 0.00750;
 
 static ENTRY_WIDGET_ID: LazyLock<iced::widget::text_input::Id> =
     std::sync::LazyLock::new(|| iced::widget::text_input::Id::new("entry"));
-static ITEMS_WIDGET_ID: LazyLock<iced::widget::scrollable::Id> =
-    std::sync::LazyLock::new(|| iced::widget::scrollable::Id::new("items"));
+static ITEMS_WIDGET_ID: LazyLock<iced::id::Id> =
+    std::sync::LazyLock::new(|| iced::id::Id::new("items"));
 
 /// The application model type.  See [the iced book](https://book.iced.rs/) for details.
 #[derive(Debug)]
@@ -73,6 +77,19 @@ impl Elbey {
     /// back.  Here, within the async execution, we directly call the library to retrieve `DesktopEntry`'s which
     /// are the primary model of the [XDG Desktop Specification](https://www.freedesktop.org/wiki/Specifications/desktop-entry-spec/).
     pub fn new(flags: ElbeyFlags) -> (Self, Task<ElbeyMessage>) {
+        let id = window::Id::unique();
+
+        let load_task = Task::perform(async {}, move |_| {
+            ElbeyMessage::ModelLoaded((flags.apps_loader)())
+        });
+        let layer_shell_task = get_layer_surface(iced::platform_specific::runtime::wayland::layer_surface::SctkLayerSurfaceSettings {
+            id,
+            size: Some((Some(320), Some(200))),
+            pointer_interactivity: true,
+            keyboard_interactivity: cctk::sctk::shell::wlr_layer::KeyboardInteractivity::OnDemand,
+            ..Default::default()
+        });
+
         (
             Self {
                 state: State {
@@ -83,14 +100,12 @@ impl Elbey {
                 },
                 flags: flags.clone(),
             },
-            Task::perform(async {}, move |_| {
-                ElbeyMessage::ModelLoaded((flags.apps_loader)())
-            }),
+            Task::batch(vec![load_task, layer_shell_task, overlap_notify(id, true)]),
         )
     }
 
     /// Entry-point from `iced`` into app to construct UI
-    pub fn view(&self) -> Element<'_, ElbeyMessage> {
+    pub fn view(&self, _id: window::Id) -> Element<'_, ElbeyMessage> {
         // Create the list UI elements based on the `DesktopEntry` model
         let app_elements: Vec<Element<ElbeyMessage>> = self
             .state
@@ -192,6 +207,12 @@ impl Elbey {
                 modified_key: _,
                 physical_key: _,
             }) => Some(ElbeyMessage::KeyEvent(key)),
+            Event::PlatformSpecific(event::PlatformSpecific::Wayland(
+                event::wayland::Event::Layer(e, ..),
+            ))=> {
+                dbg!(e);
+                None
+            },
             _ => None,
         })
     }

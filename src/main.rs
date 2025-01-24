@@ -8,43 +8,21 @@ use std::sync::LazyLock;
 use anyhow::Context;
 use app::{Elbey, ElbeyFlags};
 use freedesktop_desktop_entry::{default_paths, get_languages_from_env, DesktopEntry, Iter};
-use iced::window;
-use iced::{window::settings::PlatformSpecific, Theme};
-use iced_core::{Font, Pixels, Size};
+use iced::{Font, Pixels};
+use iced::Theme;
 
 static PROGRAM_NAME: LazyLock<String> = std::sync::LazyLock::new(|| String::from("Elbey"));
 
 /// Program entrypoint.  Just configures the app, window, and kicks off the iced runtime.
 fn main() -> iced::Result {
-    // UI settings
     let iced_settings = iced::settings::Settings {
         id: Some(PROGRAM_NAME.to_string()),
         fonts: vec![],
         default_font: Font::DEFAULT,
         default_text_size: Pixels::from(18),
         antialiasing: true,
-    };
-
-    // Window settings
-    let window_settings = window::Settings {
-        size: Size {
-            width: 320.0,
-            height: 200.0,
-        },
-        position: window::Position::Centered,
-        min_size: None,
-        max_size: None,
-        visible: true,
-        resizable: false,
-        decorations: false,
-        transparent: false,
-        level: Default::default(),
-        icon: None,
-        platform_specific: PlatformSpecific {
-            application_id: PROGRAM_NAME.to_string(),
-            override_redirect: false,
-        },
         exit_on_close_request: true,
+        is_daemon: false,
     };
 
     // A function that returns the app struct
@@ -55,11 +33,9 @@ fn main() -> iced::Result {
         })
     };
 
-    // Kick off iced GUI
-    iced::application(PROGRAM_NAME.as_str(), Elbey::update, Elbey::view)
+    iced::daemon(PROGRAM_NAME.as_str(), Elbey::update, Elbey::view)
         .settings(iced_settings)
-        .window(window_settings)
-        .theme(|_| Theme::Nord)
+        .theme(|_, _| Theme::Nord)
         .subscription(Elbey::subscription)
         .run_with(app_factory)
 }
