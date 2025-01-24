@@ -3,16 +3,14 @@ use std::process::exit;
 use std::sync::LazyLock;
 
 use freedesktop_desktop_entry::DesktopEntry;
+use iced::keyboard::key::Named;
+use iced::keyboard::Key;
+use iced::platform_specific::shell::commands::layer_surface::get_layer_surface;
+use iced::platform_specific::shell::commands::overlap_notify::overlap_notify;
 use iced::widget::button::{primary, text};
 use iced::widget::scrollable::{snap_to, RelativeOffset};
 use iced::widget::{button, column, scrollable, text_input, Column};
 use iced::{event, window, Element, Event, Length, Task};
-use iced::keyboard::key::Named;
-use iced::keyboard::Key;
-use iced::platform_specific::shell::commands::layer_surface::get_layer_surface;
-use iced::platform_specific::shell::commands::{
-    overlap_notify::overlap_notify,
-};
 
 /// A magic value to calculate relative pixel hight to move one item in the scrollable
 const ITEM_HEIGHT_SCALE_FACTOR: f32 = 0.00750;
@@ -82,13 +80,16 @@ impl Elbey {
         let load_task = Task::perform(async {}, move |_| {
             ElbeyMessage::ModelLoaded((flags.apps_loader)())
         });
-        let layer_shell_task = get_layer_surface(iced::platform_specific::runtime::wayland::layer_surface::SctkLayerSurfaceSettings {
-            id,
-            size: Some((Some(320), Some(200))),
-            pointer_interactivity: true,
-            keyboard_interactivity: cctk::sctk::shell::wlr_layer::KeyboardInteractivity::OnDemand,
-            ..Default::default()
-        });
+        let layer_shell_task = get_layer_surface(
+            iced::platform_specific::runtime::wayland::layer_surface::SctkLayerSurfaceSettings {
+                id,
+                size: Some((Some(320), Some(200))),
+                pointer_interactivity: true,
+                keyboard_interactivity:
+                    cctk::sctk::shell::wlr_layer::KeyboardInteractivity::OnDemand,
+                ..Default::default()
+            },
+        );
 
         (
             Self {
@@ -209,10 +210,10 @@ impl Elbey {
             }) => Some(ElbeyMessage::KeyEvent(key)),
             Event::PlatformSpecific(event::PlatformSpecific::Wayland(
                 event::wayland::Event::Layer(e, ..),
-            ))=> {
+            )) => {
                 dbg!(e);
                 None
-            },
+            }
             _ => None,
         })
     }

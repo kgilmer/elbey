@@ -8,8 +8,8 @@ use std::sync::LazyLock;
 use anyhow::Context;
 use app::{Elbey, ElbeyFlags};
 use freedesktop_desktop_entry::{default_paths, get_languages_from_env, DesktopEntry, Iter};
-use iced::{Font, Pixels};
 use iced::Theme;
+use iced::{Font, Pixels};
 
 static PROGRAM_NAME: LazyLock<String> = std::sync::LazyLock::new(|| String::from("Elbey"));
 
