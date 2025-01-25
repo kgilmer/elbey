@@ -7,7 +7,9 @@ use std::sync::LazyLock;
 
 use anyhow::Context;
 use app::{Elbey, ElbeyFlags};
-use freedesktop_desktop_entry::{default_paths, get_languages_from_env, DesktopEntry, Iter};
+use freedesktop_desktop_entry::{
+    current_desktop, default_paths, get_languages_from_env, DesktopEntry, Iter,
+};
 use iced::Theme;
 use iced::{Font, Pixels};
 
@@ -66,7 +68,54 @@ fn launch_app(entry: &DesktopEntry) -> anyhow::Result<()> {
 fn load_apps() -> Vec<DesktopEntry> {
     let locales = get_languages_from_env();
 
-    Iter::new(default_paths())
+    let app_list_iter = Iter::new(default_paths())
         .entries(Some(&locales))
-        .collect::<Vec<_>>()
+        .filter(|entry| !entry.no_display());
+
+    // If current desktop is known, filter items that only apply to that desktop
+    let mut app_list = if let Some(current_desktop) = current_desktop() {
+        app_list_iter
+            .filter(|entry| matching_show_in_filter(entry, &current_desktop))
+            .filter(|entry| matching_no_show_in_filter(entry, &current_desktop))
+            .collect::<Vec<_>>()
+    } else {
+        app_list_iter.collect::<Vec<_>>()
+    };
+
+    // TODO: bubble frequently used apps to the top
+    app_list.sort_by(|a, b| a.name(&locales).cmp(&b.name(&locales)));
+
+    app_list
+}
+
+// Return true if the entry and current desktop have a matching element, or if no desktop is available or the entry has no desktop spec.  False otherwise.
+fn matching_show_in_filter(entry: &DesktopEntry, current_desktop: &[String]) -> bool {
+    if let Some(show_in) = entry.only_show_in() {
+        for show_in_desktop in show_in {
+            for desktop in current_desktop.iter() {
+                if show_in_desktop == desktop {
+                    return true;
+                }
+            }
+        }
+        false
+    } else {
+        true
+    }
+}
+
+// Return false if the entry and current desktop have a matching element.  Return true if no desktop is available or the entry has no desktop spec.
+fn matching_no_show_in_filter(entry: &DesktopEntry, current_desktop: &[String]) -> bool {
+    if let Some(no_show_in) = entry.not_show_in() {
+        for show_in_desktop in no_show_in {
+            for desktop in current_desktop.iter() {
+                if show_in_desktop == desktop {
+                    return false;
+                }
+            }
+        }
+        true
+    } else {
+        true
+    }
 }
