@@ -13,7 +13,8 @@ The application is functional in that desktop apps can be launched from the dial
 Things that might be fun to add to `ebley`:
 
 * Sort the entries by usage or name
-* Implement page up and page down
+* ~Use layer shell so window always on top of existing windows~ (Done: [Pull Request](https://github.com/kgilmer/elbey/pull/5))
+* ~Implement page up and page down~ (Done: [Pull Request](https://github.com/kgilmer/elbey/pull/5))
 * Add caching to speed up retrieval of the apps
 * Show app icons in addition to the titles
 * Allow theme to be selected from the command line
@@ -54,6 +55,6 @@ which elbey # where cargo installed the binary
 
 ## Credit
 
-This program was inspired by the friendly docs of [`iced`](https://github.com/iced-rs/iced) itself, other desktop app launchers such as [pop-launcher](https://github.com/pop-os/launcher) and [onagre](https://github.com/onagre-launcher/onagre), and the greater Rust desktop cohort.  Of course the venerable [`rofi`](https://github.com/davatorium/rofi) must also be mentioned.
+This program was inspired by the friendly docs of [`iced`](https://github.com/iced-rs/iced) itself, other desktop app launchers such as [pop-launcher](https://github.com/pop-os/launcher) and [onagre](https://github.com/onagre-launcher/onagre), [`gauntlet`](https://github.com/project-gauntlet/gauntlet/), [`iced_launcher`](https://github.com/Decodetalkers/iced_launcher), and the greater Rust desktop cohort.  Of course the venerable [`rofi`](https://github.com/davatorium/rofi) must also be mentioned.
 
 Project logo was created by Mira Gilmer.
