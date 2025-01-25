@@ -2,11 +2,12 @@
 use std::process::exit;
 use std::sync::LazyLock;
 
+use cctk::sctk::shell::wlr_layer::Layer;
 use freedesktop_desktop_entry::DesktopEntry;
+use iced::event::wayland::LayerEvent;
 use iced::keyboard::key::Named;
 use iced::keyboard::Key;
 use iced::platform_specific::shell::commands::layer_surface::get_layer_surface;
-use iced::platform_specific::shell::commands::overlap_notify::overlap_notify;
 use iced::widget::button::{primary, text};
 use iced::widget::scrollable::{snap_to, RelativeOffset};
 use iced::widget::{button, column, scrollable, text_input, Column};
@@ -77,16 +78,19 @@ impl Elbey {
     pub fn new(flags: ElbeyFlags) -> (Self, Task<ElbeyMessage>) {
         let id = window::Id::unique();
 
+        // A task to load the app model
         let load_task = Task::perform(async {}, move |_| {
             ElbeyMessage::ModelLoaded((flags.apps_loader)())
         });
+        // A task to initialize the layer shell
         let layer_shell_task = get_layer_surface(
             iced::platform_specific::runtime::wayland::layer_surface::SctkLayerSurfaceSettings {
                 id,
+                layer: Layer::Overlay, // The window should always be visible
                 size: Some((Some(320), Some(200))),
                 pointer_interactivity: true,
                 keyboard_interactivity:
-                    cctk::sctk::shell::wlr_layer::KeyboardInteractivity::OnDemand,
+                    cctk::sctk::shell::wlr_layer::KeyboardInteractivity::Exclusive, // Consume all key events
                 ..Default::default()
             },
         );
@@ -101,7 +105,7 @@ impl Elbey {
                 },
                 flags: flags.clone(),
             },
-            Task::batch(vec![load_task, layer_shell_task, overlap_notify(id, true)]),
+            Task::batch(vec![load_task, layer_shell_task]),
         )
     }
 
@@ -151,13 +155,12 @@ impl Elbey {
             // The model has been loaded, initialize the UI
             ElbeyMessage::ModelLoaded(items) => {
                 self.state.apps = items;
-                text_input::focus::<ElbeyMessage>(ENTRY_WIDGET_ID.clone())
+                Task::none()
             }
             // Rebuild the select list based on the updated text entry
             ElbeyMessage::EntryUpdate(entry_text) => {
                 self.state.entry = entry_text;
                 self.state.selected_index = 0;
-
                 Task::none()
             }
             // Launch an application selected by the user
@@ -183,7 +186,7 @@ impl Elbey {
             // Handle window events
             ElbeyMessage::GainedFocus => {
                 self.state.received_focus = true;
-                Task::none()
+                text_input::focus(ENTRY_WIDGET_ID.clone())
             }
             ElbeyMessage::LostFocus => {
                 if self.state.received_focus {
@@ -209,10 +212,17 @@ impl Elbey {
                 physical_key: _,
             }) => Some(ElbeyMessage::KeyEvent(key)),
             Event::PlatformSpecific(event::PlatformSpecific::Wayland(
-                event::wayland::Event::Layer(e, ..),
+                event::wayland::Event::Layer(layer_event, ..),
             )) => {
-                dbg!(e);
-                None
+                // Map some layer events to produce same tasks as window events
+                match layer_event {
+                    LayerEvent::Focused => Some(ElbeyMessage::GainedFocus),
+                    LayerEvent::Unfocused => Some(ElbeyMessage::LostFocus),
+                    _ => {
+                        dbg!(layer_event);
+                        None
+                    }
+                }
             }
             _ => None,
         })
