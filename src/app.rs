@@ -1,4 +1,5 @@
 //! Functions and other types for `iced` UI to view, filter, and launch apps
+use std::cmp::{max, min};
 use std::process::exit;
 use std::sync::LazyLock;
 
@@ -9,17 +10,16 @@ use iced::keyboard::key::Named;
 use iced::keyboard::Key;
 use iced::platform_specific::shell::commands::layer_surface::get_layer_surface;
 use iced::widget::button::{primary, text};
-use iced::widget::scrollable::{snap_to, RelativeOffset};
 use iced::widget::{button, column, scrollable, text_input, Column};
 use iced::{event, window, Element, Event, Length, Task};
-
-/// A magic value to calculate relative pixel hight to move one item in the scrollable
-const ITEM_HEIGHT_SCALE_FACTOR: f32 = 0.00750;
 
 static ENTRY_WIDGET_ID: LazyLock<iced::widget::text_input::Id> =
     std::sync::LazyLock::new(|| iced::widget::text_input::Id::new("entry"));
 static ITEMS_WIDGET_ID: LazyLock<iced::id::Id> =
     std::sync::LazyLock::new(|| iced::id::Id::new("items"));
+
+// The max number of items to render in the list
+const VIEWABLE_LIST_ITEM_COUNT: usize = 10;
 
 /// The application model type.  See [the iced book](https://book.iced.rs/) for details.
 #[derive(Debug)]
@@ -75,6 +75,7 @@ impl Elbey {
     /// Initialize the app.  Only notable item here is probably the return type Task<ElbeyMessage> and what we pass
     /// back.  Here, within the async execution, we directly call the library to retrieve `DesktopEntry`'s which
     /// are the primary model of the [XDG Desktop Specification](https://www.freedesktop.org/wiki/Specifications/desktop-entry-spec/).
+    /// Then we create and pass a layer shell as another task.
     pub fn new(flags: ElbeyFlags) -> (Self, Task<ElbeyMessage>) {
         let id = window::Id::unique();
 
@@ -116,8 +117,12 @@ impl Elbey {
             .state
             .apps
             .iter()
-            .filter(|e| Self::text_entry_filter(e, &self.state))
+            .filter(|e| Self::text_entry_filter(e, &self.state)) // Only show entries that match filter
             .enumerate()
+            .filter(|(index, _)| {
+                (self.state.selected_index..self.state.selected_index + VIEWABLE_LIST_ITEM_COUNT)
+                    .contains(index)
+            }) // Only show entries in selection range
             .map(|(index, entry)| {
                 let name = entry.desktop_entry("Name").unwrap_or("err");
                 let selected = self.state.selected_index == index;
@@ -175,6 +180,10 @@ impl Elbey {
                 Key::Named(Named::Escape) => exit(0),
                 Key::Named(Named::ArrowUp) => self.navigate_items(-1),
                 Key::Named(Named::ArrowDown) => self.navigate_items(1),
+                Key::Named(Named::PageUp) => {
+                    self.navigate_items(-(VIEWABLE_LIST_ITEM_COUNT as i32))
+                }
+                Key::Named(Named::PageDown) => self.navigate_items(VIEWABLE_LIST_ITEM_COUNT as i32),
                 Key::Named(Named::Enter) => {
                     if let Some(entry) = self.selected_entry() {
                         (self.flags.app_launcher)(entry).expect("Failed to launch app");
@@ -237,29 +246,16 @@ impl Elbey {
             .nth(self.state.selected_index)
     }
 
-    // Change the selected item and update the UI with the returned `Task`
     fn navigate_items(&mut self, delta: i32) -> iced::Task<ElbeyMessage> {
-        let new_index = (self.state.selected_index as i32 + delta) as usize;
-        let size = self
-            .state
-            .apps
-            .iter()
-            .filter(|e| Self::text_entry_filter(e, &self.state))
-            .count();
-
-        if (0..size).contains(&new_index) {
-            self.state.selected_index = new_index;
-
-            snap_to::<ElbeyMessage>(
-                ITEMS_WIDGET_ID.clone(),
-                RelativeOffset {
-                    x: 0.0,
-                    y: new_index as f32 * ITEM_HEIGHT_SCALE_FACTOR,
-                },
-            )
+        if delta < 0 {
+            self.state.selected_index = max(0, self.state.selected_index as i32 + delta) as usize;
         } else {
-            Task::none() // If the new location is out of bounds, ignore
+            self.state.selected_index = min(
+                self.state.apps.len() as i32 - 1,
+                self.state.selected_index as i32 + delta,
+            ) as usize;
         }
+        Task::none()
     }
 
     // Compute the items in the list to display based on the model
