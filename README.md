@@ -13,7 +13,8 @@ The application is functional in that desktop apps can be launched from the dial
 Things that might be fun to add to `ebley`:
 
 * Sort the entries by usage or name
-* Implement page up and page down
+* ~Use layer shell so window always on top of existing windows~ (Done: [Pull Request](https://github.com/kgilmer/elbey/pull/5))
+* ~Implement page up and page down~ (Done: [Pull Request](https://github.com/kgilmer/elbey/pull/5))
 * Add caching to speed up retrieval of the apps
 * Show app icons in addition to the titles
 * Allow theme to be selected from the command line
