@@ -10,4 +10,4 @@ Architecture: any
 Multi-Arch: foreign
 Depends: ${misc:Depends}, ${shlibs:Depends}
 Description: Desktop app launcher
-A bare bones desktop app launcher focusing on simplicity and speed
+ A bare bones desktop app launcher focusing on simplicity and speed
