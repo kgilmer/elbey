@@ -10,36 +10,39 @@ use app::{Elbey, ElbeyFlags};
 use freedesktop_desktop_entry::{
     current_desktop, default_paths, get_languages_from_env, DesktopEntry, Iter,
 };
-use iced::Theme;
 use iced::{Font, Pixels};
+use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
+use iced_layershell::settings::{LayerShellSettings, Settings, StartMode};
+use iced_layershell::Application;
 
 static PROGRAM_NAME: LazyLock<String> = std::sync::LazyLock::new(|| String::from("Elbey"));
 
 /// Program entrypoint.  Just configures the app, window, and kicks off the iced runtime.
-fn main() -> iced::Result {
-    let iced_settings = iced::settings::Settings {
+fn main() -> Result<(), iced_layershell::Error> {
+    let iced_settings = Settings {
+        layer_settings: LayerShellSettings {
+            size: Some((320, 200)),
+            exclusive_zone: 200,
+            anchor: Anchor::all(),
+            start_mode: StartMode::Active,
+            layer: Layer::Overlay,
+            margin: (0, 0, 0, 0),
+            keyboard_interactivity: KeyboardInteractivity::Exclusive,
+            events_transparent: false,
+        },
+        flags: ElbeyFlags {
+            apps_loader: load_apps,
+            app_launcher: launch_app,
+        },
         id: Some(PROGRAM_NAME.to_string()),
         fonts: vec![],
         default_font: Font::DEFAULT,
         default_text_size: Pixels::from(18),
         antialiasing: true,
-        exit_on_close_request: true,
-        is_daemon: false,
+        virtual_keyboard_support: None,
     };
 
-    // A function that returns the app struct
-    let app_factory = || {
-        Elbey::new(ElbeyFlags {
-            apps_loader: load_apps,
-            app_launcher: launch_app,
-        })
-    };
-
-    iced::daemon(PROGRAM_NAME.as_str(), Elbey::update, Elbey::view)
-        .settings(iced_settings)
-        .theme(|_, _| Theme::Nord)
-        .subscription(Elbey::subscription)
-        .run_with(app_factory)
+    Elbey::run(iced_settings)
 }
 
 /// Launch an app described by `entry`.  This implementation exits the process upon successful launch.
