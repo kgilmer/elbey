@@ -5,14 +5,16 @@ use std::sync::LazyLock;
 
 use cctk::sctk::shell::wlr_layer::Layer;
 use freedesktop_desktop_entry::DesktopEntry;
+use iced::core::Element;
 use iced::event::wayland::LayerEvent;
 use iced::keyboard::key::Named;
 use iced::keyboard::Key;
 use iced::platform_specific::shell::commands::layer_surface::get_layer_surface;
-use iced::widget::button::{primary, text};
-use iced::widget::{button, column, scrollable, text_input, Column};
-use iced::{event, window, Element, Event, Length, Task};
+use iced::widget::button::primary;
+use iced::widget::{button, column, row, scrollable, svg, text, text_input, Column};
+use iced::{event, window, Event, Length, Task};
 
+static DEFAULT_ICON: &[u8] = include_bytes!("../elbey.svg");
 static ENTRY_WIDGET_ID: LazyLock<iced::widget::text_input::Id> =
     std::sync::LazyLock::new(|| iced::widget::text_input::Id::new("entry"));
 static ITEMS_WIDGET_ID: LazyLock<iced::id::Id> =
@@ -64,11 +66,13 @@ pub struct ElbeyFlags {
     /**
      * A function that returns a list of `DesktopEntry`s
      */
-    pub apps_loader: fn() -> Vec<DesktopEntry>,
+    pub apps_loader: fn(&Vec<String>) -> Vec<DesktopEntry>,
     /**
      * A function that launches a process from a `DesktopEntry`
      */
     pub app_launcher: fn(&DesktopEntry) -> anyhow::Result<()>, //TODO ~ return a task that exits app
+
+    pub locales: Vec<String>,
 }
 
 impl Elbey {
@@ -79,9 +83,11 @@ impl Elbey {
     pub fn new(flags: ElbeyFlags) -> (Self, Task<ElbeyMessage>) {
         let id = window::Id::unique();
 
+        let locales: Vec<String> = flags.locales.to_vec();
+
         // A task to load the app model
         let load_task = Task::perform(async {}, move |_| {
-            ElbeyMessage::ModelLoaded((flags.apps_loader)())
+            ElbeyMessage::ModelLoaded((flags.apps_loader)(&locales))
         });
         // A task to initialize the layer shell
         let layer_shell_task = get_layer_surface(
@@ -104,16 +110,16 @@ impl Elbey {
                     selected_index: 0,
                     received_focus: false,
                 },
-                flags: flags.clone(),
+                flags: flags,
             },
             Task::batch(vec![load_task, layer_shell_task]),
         )
     }
 
-    /// Entry-point from `iced`` into app to construct UI
-    pub fn view(&self, _id: window::Id) -> Element<'_, ElbeyMessage> {
+    /// Entry-point from `iced` into app to construct UI
+    pub fn view(&self, _id: window::Id) -> Element<'_, ElbeyMessage, iced::Theme, iced::Renderer> {
         // Create the list UI elements based on the `DesktopEntry` model
-        let app_elements: Vec<Element<ElbeyMessage>> = self
+        let app_elements: Vec<Element<'_, ElbeyMessage, iced::Theme, iced::Renderer>> = self
             .state
             .apps
             .iter()
@@ -122,21 +128,14 @@ impl Elbey {
             .filter(|(index, _)| {
                 (self.state.selected_index..self.state.selected_index + VIEWABLE_LIST_ITEM_COUNT)
                     .contains(index)
-            }) // Only show entries in selection range
+            })
+            .filter(|(_, entry)| entry.name(&self.flags.locales).is_some()) // Only show entries in selection range
             .map(|(index, entry)| {
-                let name = entry.desktop_entry("Name").unwrap_or("err");
+                let name = entry
+                    .desktop_entry("Name")
+                    .expect("Items without names were filtered out");
                 let selected = self.state.selected_index == index;
-                button(name)
-                    .style(move |theme, status| {
-                        if selected {
-                            primary(theme, status)
-                        } else {
-                            text(theme, status)
-                        }
-                    })
-                    .width(Length::Fill)
-                    .on_press(ElbeyMessage::ExecuteSelected())
-                    .into()
+                Elbey::app_widget(name, selected)
             })
             .collect();
 
@@ -266,13 +265,36 @@ impl Elbey {
             false
         }
     }
+
+    fn app_widget(
+        name: &str,
+        selected: bool,
+    ) -> Element<'_, ElbeyMessage, iced::Theme, iced::Renderer> {
+        let img: Element<'_, ElbeyMessage, iced::Theme, iced::Renderer> = svg(svg::Handle::from_memory(DEFAULT_ICON))
+        .width(Length::Fixed(32.))
+        .height(Length::Fixed(32.))
+        .into();
+    
+        let row = row![img, text(name)];
+        button(row)
+            .style(move |theme, status| {
+                if selected {
+                    primary(theme, status)
+                } else {
+                    iced::widget::button::text(theme, status)
+                }
+            })
+            .width(Length::Fill)
+            .on_press(ElbeyMessage::ExecuteSelected())
+            .into()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    static EMPTY_LOADER: fn() -> Vec<DesktopEntry> = || vec![];
+    static EMPTY_LOADER: fn(&Vec<String>) -> Vec<DesktopEntry> = |_| vec![];
 
     static TEST_DESKTOP_ENTRY_1: LazyLock<DesktopEntry> =
         std::sync::LazyLock::new(|| DesktopEntry::from_appid(String::from("test_app_id_1")));
@@ -281,7 +303,7 @@ mod tests {
     static TEST_DESKTOP_ENTRY_3: LazyLock<DesktopEntry> =
         std::sync::LazyLock::new(|| DesktopEntry::from_appid(String::from("test_app_id_3")));
 
-    static TEST_ENTRY_LOADER: fn() -> Vec<DesktopEntry> = || {
+    static TEST_ENTRY_LOADER: fn(&Vec<String>) -> Vec<DesktopEntry> = |_| {
         vec![
             TEST_DESKTOP_ENTRY_1.clone(),
             TEST_DESKTOP_ENTRY_2.clone(),
@@ -299,9 +321,10 @@ mod tests {
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: test_launcher,
+            locales: vec![],
         });
 
-        let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER()));
+        let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER(&vec![])));
         let _ = unit.update(ElbeyMessage::ExecuteSelected());
     }
 
@@ -315,9 +338,10 @@ mod tests {
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: test_launcher,
+            locales: vec![],
         });
 
-        let _ = unit.update(ElbeyMessage::ModelLoaded(EMPTY_LOADER()));
+        let _ = unit.update(ElbeyMessage::ModelLoaded(EMPTY_LOADER(&vec![])));
         let _result = unit.update(ElbeyMessage::ExecuteSelected());
     }
 
@@ -331,9 +355,10 @@ mod tests {
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: test_launcher,
+            locales: vec![],
         });
 
-        let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER()));
+        let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER(&vec![])));
         let _ = unit.update(ElbeyMessage::KeyEvent(Key::Named(Named::ArrowDown)));
         let _ = unit.update(ElbeyMessage::KeyEvent(Key::Named(Named::ArrowDown)));
         let _ = unit.update(ElbeyMessage::KeyEvent(Key::Named(Named::ArrowUp)));

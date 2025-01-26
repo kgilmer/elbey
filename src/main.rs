@@ -32,6 +32,7 @@ fn main() -> iced::Result {
         Elbey::new(ElbeyFlags {
             apps_loader: load_apps,
             app_launcher: launch_app,
+            locales: get_languages_from_env(),
         })
     };
 
@@ -65,11 +66,9 @@ fn launch_app(entry: &DesktopEntry) -> anyhow::Result<()> {
 }
 
 /// Load DesktopEntry's from `DesktopIter`
-fn load_apps() -> Vec<DesktopEntry> {
-    let locales = get_languages_from_env();
-
+fn load_apps(locales: &Vec<String>) -> Vec<DesktopEntry> {
     let app_list_iter = Iter::new(default_paths())
-        .entries(Some(&locales))
+        .entries(Some(locales))
         .filter(|entry| !entry.no_display());
 
     // If current desktop is known, filter items that only apply to that desktop
@@ -83,7 +82,7 @@ fn load_apps() -> Vec<DesktopEntry> {
     };
 
     // TODO: bubble frequently used apps to the top
-    app_list.sort_by(|a, b| a.name(&locales).cmp(&b.name(&locales)));
+    app_list.sort_by(|a, b| a.name(locales).cmp(&b.name(locales)));
 
     app_list
 }
