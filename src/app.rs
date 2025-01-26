@@ -3,20 +3,20 @@ use std::cmp::{max, min};
 use std::process::exit;
 use std::sync::LazyLock;
 
-use cctk::sctk::shell::wlr_layer::Layer;
 use freedesktop_desktop_entry::DesktopEntry;
-use iced::event::wayland::LayerEvent;
 use iced::keyboard::key::Named;
 use iced::keyboard::Key;
-use iced::platform_specific::shell::commands::layer_surface::get_layer_surface;
 use iced::widget::button::{primary, text};
 use iced::widget::{button, column, scrollable, text_input, Column};
-use iced::{event, window, Element, Event, Length, Task};
+use iced::{event, window, Element, Event, Length, Task, Theme};
+use iced_layershell::{to_layer_message, Application};
+
+use crate::PROGRAM_NAME;
 
 static ENTRY_WIDGET_ID: LazyLock<iced::widget::text_input::Id> =
     std::sync::LazyLock::new(|| iced::widget::text_input::Id::new("entry"));
-static ITEMS_WIDGET_ID: LazyLock<iced::id::Id> =
-    std::sync::LazyLock::new(|| iced::id::Id::new("items"));
+static ITEMS_WIDGET_ID: LazyLock<iced::widget::scrollable::Id> =
+    std::sync::LazyLock::new(|| iced::widget::scrollable::Id::new("items"));
 
 // The max number of items to render in the list
 const VIEWABLE_LIST_ITEM_COUNT: usize = 10;
@@ -42,6 +42,7 @@ pub struct Elbey {
 }
 
 /// Messages are how your logic mutates the app state and GUI
+#[to_layer_message]
 #[derive(Debug, Clone)]
 pub enum ElbeyMessage {
     /// Signals that the `DesktopEntries` have been fully loaded into the vec
@@ -71,30 +72,21 @@ pub struct ElbeyFlags {
     pub app_launcher: fn(&DesktopEntry) -> anyhow::Result<()>, //TODO ~ return a task that exits app
 }
 
-impl Elbey {
+impl Application for Elbey {
+    type Message = ElbeyMessage;
+    type Flags = ElbeyFlags;
+    type Theme = Theme;
+    type Executor = iced::executor::Default;
+
     /// Initialize the app.  Only notable item here is probably the return type Task<ElbeyMessage> and what we pass
     /// back.  Here, within the async execution, we directly call the library to retrieve `DesktopEntry`'s which
     /// are the primary model of the [XDG Desktop Specification](https://www.freedesktop.org/wiki/Specifications/desktop-entry-spec/).
     /// Then we create and pass a layer shell as another task.
-    pub fn new(flags: ElbeyFlags) -> (Self, Task<ElbeyMessage>) {
-        let id = window::Id::unique();
-
+    fn new(flags: ElbeyFlags) -> (Self, Task<ElbeyMessage>) {
         // A task to load the app model
         let load_task = Task::perform(async {}, move |_| {
             ElbeyMessage::ModelLoaded((flags.apps_loader)())
         });
-        // A task to initialize the layer shell
-        let layer_shell_task = get_layer_surface(
-            iced::platform_specific::runtime::wayland::layer_surface::SctkLayerSurfaceSettings {
-                id,
-                layer: Layer::Overlay, // The window should always be visible
-                size: Some((Some(320), Some(200))),
-                pointer_interactivity: true,
-                keyboard_interactivity:
-                    cctk::sctk::shell::wlr_layer::KeyboardInteractivity::Exclusive, // Consume all key events
-                ..Default::default()
-            },
-        );
 
         (
             Self {
@@ -104,14 +96,18 @@ impl Elbey {
                     selected_index: 0,
                     received_focus: false,
                 },
-                flags: flags.clone(),
+                flags,
             },
-            Task::batch(vec![load_task, layer_shell_task]),
+            load_task,
         )
     }
 
+    fn namespace(&self) -> String {
+        PROGRAM_NAME.to_string()
+    }
+
     /// Entry-point from `iced`` into app to construct UI
-    pub fn view(&self, _id: window::Id) -> Element<'_, ElbeyMessage> {
+    fn view(&self) -> Element<'_, ElbeyMessage> {
         // Create the list UI elements based on the `DesktopEntry` model
         let app_elements: Vec<Element<ElbeyMessage>> = self
             .state
@@ -155,12 +151,12 @@ impl Elbey {
     }
 
     /// Entry-point from `iced` to handle user and system events
-    pub fn update(&mut self, message: ElbeyMessage) -> Task<ElbeyMessage> {
+    fn update(&mut self, message: ElbeyMessage) -> Task<ElbeyMessage> {
         match message {
             // The model has been loaded, initialize the UI
             ElbeyMessage::ModelLoaded(items) => {
                 self.state.apps = items;
-                Task::none()
+                text_input::focus(ENTRY_WIDGET_ID.clone())
             }
             // Rebuild the select list based on the updated text entry
             ElbeyMessage::EntryUpdate(entry_text) => {
@@ -203,11 +199,39 @@ impl Elbey {
                 }
                 Task::none()
             }
+            ElbeyMessage::AnchorChange(anchor) => {
+                dbg!(anchor);
+                Task::none()
+            }
+            ElbeyMessage::SetInputRegion(action_callback) => {
+                dbg!(action_callback);
+                Task::none()
+            }
+            ElbeyMessage::AnchorSizeChange(anchor, _) => {
+                dbg!(anchor);
+                Task::none()
+            }
+            ElbeyMessage::LayerChange(layer) => {
+                dbg!(layer);
+                Task::none()
+            }
+            ElbeyMessage::MarginChange(mc) => {
+                dbg!(mc);
+                Task::none()
+            }
+            ElbeyMessage::SizeChange(sc) => {
+                dbg!(sc);
+                Task::none()
+            }
+            ElbeyMessage::VirtualKeyboardPressed { time, key } => {
+                dbg!(time, key);
+                Task::none()
+            }
         }
     }
 
     /// The `iced` entry-point to setup event listeners
-    pub fn subscription(&self) -> iced::Subscription<ElbeyMessage> {
+    fn subscription(&self) -> iced::Subscription<ElbeyMessage> {
         // Framework code to integrate with underlying user interface devices; keyboard, mouse.
         event::listen_with(|event, _status, _| match event {
             Event::Window(window::Event::Focused) => Some(ElbeyMessage::GainedFocus),
@@ -220,23 +244,16 @@ impl Elbey {
                 modified_key: _,
                 physical_key: _,
             }) => Some(ElbeyMessage::KeyEvent(key)),
-            Event::PlatformSpecific(event::PlatformSpecific::Wayland(
-                event::wayland::Event::Layer(layer_event, ..),
-            )) => {
-                // Map some layer events to produce same tasks as window events
-                match layer_event {
-                    LayerEvent::Focused => Some(ElbeyMessage::GainedFocus),
-                    LayerEvent::Unfocused => Some(ElbeyMessage::LostFocus),
-                    _ => {
-                        dbg!(layer_event);
-                        None
-                    }
-                }
-            }
             _ => None,
         })
     }
 
+    fn theme(&self) -> Self::Theme {
+        Theme::Nord
+    }
+}
+
+impl Elbey {
     // Return ref to the selected item from the app list after applying filter
     fn selected_entry(&self) -> Option<&DesktopEntry> {
         self.state

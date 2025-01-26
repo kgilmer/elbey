@@ -11,6 +11,6 @@ readme = "README.md"
 anyhow = "1.0"
 dirs = "6.0"
 freedesktop-desktop-entry = "0.7"
-iced = { git = "https://github.com/pop-os/iced", features = [ "wayland", "winit", "wgpu" ] } # { version = "0.13", features = ["wgpu"] }
+iced = "0.13"
+iced_layershell = "0.13"
 shell-words = "^1"
-cctk = { git = "https://github.com/pop-os/cosmic-protocols", package = "cosmic-client-toolkit", rev = "d218c76" }
