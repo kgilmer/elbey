@@ -1,13 +1,42 @@
-Source: elbey
-Section: utils
+Source: rust-elbey
+Section: Utilities
 Priority: optional
-Maintainer: Ken Gilmer <kgilmer@gmail.com>
-Build-Depends: cargo, debhelper (>= 11)
-Standards-Version: 4.5.0
+Build-Depends: debhelper (>= 12),
+ dh-cargo (>= 25),
+ cargo:native,
+ rustc:native,
+ libstd-rust-dev,
+ librust-anyhow-1+default-dev,
+ librust-dirs-6+default-dev,
+ librust-freedesktop-desktop-entry-0.7+default-dev,
+ librust-iced-0.13+default-dev,
+ librust-iced-layershell-0.13+default-dev,
+ librust-shell-words-1+default-dev
+Maintainer: Debian Rust Maintainers <pkg-rust-maintainers@alioth-lists.debian.net>
+Uploaders:
+ Ken Gilmer <kgilmer@gmail.com>
+Standards-Version: 4.6.2
+Vcs-Git: https://salsa.debian.org/rust-team/debcargo-conf.git [src/elbey]
+Vcs-Browser: https://salsa.debian.org/rust-team/debcargo-conf/tree/master/src/elbey
+X-Cargo-Crate: elbey
+Rules-Requires-Root: no
 
 Package: elbey
 Architecture: any
-Multi-Arch: foreign
-Depends: ${misc:Depends}, ${shlibs:Depends}
-Description: Desktop app launcher
- A bare bones desktop app launcher focusing on simplicity and speed
+Multi-Arch: allowed
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+ ${cargo:Depends}
+Recommends:
+ ${cargo:Recommends}
+Suggests:
+ ${cargo:Suggests}
+Provides:
+ ${cargo:Provides}
+Built-Using: ${cargo:Built-Using}
+XB-X-Cargo-Built-Using: ${cargo:X-Cargo-Built-Using}
+Description: Bare bones desktop app launcher focusing on simplicity and speed
+ This package contains the following binaries built from the Rust crate
+ "elbey":
+  - elbey
