@@ -1,0 +1,13 @@
+Source: elbey
+Section: utils
+Priority: optional
+Maintainer: Ken Gilmer <kgilmer@gmail.com>
+Build-Depends: cargo, debhelper (>= 11)
+Standards-Version: 4.5.0
+
+Package: elbey
+Architecture: any
+Multi-Arch: foreign
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: Desktop app launcher
+A bare bones desktop app launcher focusing on simplicity and speed
