@@ -6,6 +6,12 @@ license-file = "LICENSE"
 description = "A bare bones desktop app launcher focusing on simplicity and speed"
 repository = "https://github.com/kgilmer/elbey"
 readme = "README.md"
+exclude = [
+    "screenshot.png",
+    "elbey.svg",
+    "debian/*",
+    "Makefile",
+]
 
 [dependencies]
 anyhow = "1.0"
