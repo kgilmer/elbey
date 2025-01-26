@@ -2,6 +2,10 @@
 name = "elbey"
 version = "0.2.0"
 edition = "2021"
+license-file = "LICENSE"
+description = "A bare bones desktop app launcher focusing on simplicity and speed"
+repository = "https://github.com/kgilmer/elbey"
+readme = "README.md"
 
 [dependencies]
 anyhow = "1.0"
