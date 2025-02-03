@@ -9,7 +9,6 @@ readme = "README.md"
 
 [dependencies]
 anyhow = "1.0"
-dirs = "6.0"
 freedesktop-desktop-entry = "0.7"
 iced = "0.13"
 iced_layershell = "0.13"
