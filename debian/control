@@ -1,0 +1,30 @@
+Source: elbey
+Section: Utilities
+Priority: optional
+Build-Depends: debhelper-compat (= 13),
+ dh-sequence-cargo,
+ cargo:native,
+ rustc:native,
+Maintainer: Ken Gilmer <kgilmer@gmail.com>
+Standards-Version: 4.7.0
+Homepage: https://github.com/kgilmer/elbey
+X-Cargo-Crate: elbey
+Rules-Requires-Root: no
+
+Package: elbey
+Architecture: any
+Multi-Arch: allowed
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+ ${cargo:Depends}
+Recommends:
+ ${cargo:Recommends}
+Suggests:
+ ${cargo:Suggests}
+Provides:
+ ${cargo:Provides}
+Built-Using: ${cargo:Built-Using}
+Static-Built-Using: ${cargo:Static-Built-Using}
+Description: Bare bones desktop app launcher focusing on simplicity and speed
+ This package contains the desktop app launcher Elbey.

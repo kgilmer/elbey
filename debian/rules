@@ -1,0 +1,24 @@
+#!/usr/bin/make -f
+%:
+	dh $@ --buildsystem cargo
+
+include /usr/share/dpkg/pkg-info.mk
+
+override_dh_auto_test:
+	dh_auto_test -- test --all
+
+vendor:
+	-[ -d vendor ] && rm -rf vendor
+	rm -rf Cargo.lock
+	cargo vendor
+	tar Jcf ../$(DEB_SOURCE)_$(DEB_VERSION_UPSTREAM).orig-vendor.tar.xz vendor/
+
+.PHONY: vendor
+
+override_dh_auto_configure:
+	dh_auto_configure $@
+	for d in vendor/* ; \
+	do \
+		[ -L debian/cargo_registry/$$(basename $$d) ] && rm debian/cargo_registry/$$(basename $$d) ; \
+		ln -rs $$d debian/cargo_registry ; \
+	done
