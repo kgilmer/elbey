@@ -1,12 +1,14 @@
 //! Elbey - a bare bones desktop app launcher
 #![doc(html_logo_url = "https://github.com/kgilmer/elbey/blob/main/elbey.svg")]
 mod app;
+mod cache;
 
 use std::process::exit;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock, Mutex};
 
 use anyhow::Context;
 use app::{Elbey, ElbeyFlags};
+use cache::Cache;
 use freedesktop_desktop_entry::{
     current_desktop, default_paths, get_languages_from_env, DesktopEntry, Iter,
 };
@@ -16,9 +18,11 @@ use iced_layershell::settings::{LayerShellSettings, Settings, StartMode};
 use iced_layershell::Application;
 
 static PROGRAM_NAME: LazyLock<String> = std::sync::LazyLock::new(|| String::from("Elbey"));
+static CACHE: LazyLock<Arc<Mutex<Cache>>> = std::sync::LazyLock::new(|| Arc::new(Mutex::new(Cache::new())));
 
 /// Program entrypoint.  Just configures the app, window, and kicks off the iced runtime.
-fn main() -> Result<(), iced_layershell::Error> {
+fn main() -> Result<(), iced_layershell::Error> {    
+
     let iced_settings = Settings {
         layer_settings: LayerShellSettings {
             size: Some((320, 200)),
@@ -46,7 +50,7 @@ fn main() -> Result<(), iced_layershell::Error> {
 }
 
 /// Launch an app described by `entry`.  This implementation exits the process upon successful launch.
-fn launch_app(entry: &DesktopEntry) -> anyhow::Result<()> {
+fn launch_app(entry: &DesktopEntry, entries: &Vec<DesktopEntry>) -> anyhow::Result<()> {
     let args = shell_words::split(
         entry
             .exec()
@@ -64,11 +68,24 @@ fn launch_app(entry: &DesktopEntry) -> anyhow::Result<()> {
         .context("Failed to spawn app")
         .map(|_| ())?;
 
+    if let Ok(cache) = CACHE.lock().as_mut() {
+        cache.update(entries)?;
+    }
+
     exit(0);
 }
 
-/// Load DesktopEntry's from `DesktopIter`
 fn load_apps() -> Vec<DesktopEntry> {
+    let cache = CACHE.lock().expect("Unable to access cache");
+    if let Some(entries) = cache.read_all() {
+        entries
+    } else {
+        find_all_apps()
+    }
+}
+
+/// Load DesktopEntry's from `DesktopIter`
+fn find_all_apps() -> Vec<DesktopEntry> {
     let locales = get_languages_from_env();
 
     let app_list_iter = Iter::new(default_paths())

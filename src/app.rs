@@ -69,7 +69,7 @@ pub struct ElbeyFlags {
     /**
      * A function that launches a process from a `DesktopEntry`
      */
-    pub app_launcher: fn(&DesktopEntry) -> anyhow::Result<()>, //TODO ~ return a task that exits app
+    pub app_launcher: fn(&DesktopEntry, &Vec<DesktopEntry>) -> anyhow::Result<()>, //TODO ~ return a task that exits app
 }
 
 impl Application for Elbey {
@@ -167,7 +167,7 @@ impl Application for Elbey {
             // Launch an application selected by the user
             ElbeyMessage::ExecuteSelected() => {
                 if let Some(entry) = self.selected_entry() {
-                    (self.flags.app_launcher)(entry).expect("Failed to launch app");
+                    (self.flags.app_launcher)(entry, &self.state.apps).expect("Failed to launch app");
                 }
                 Task::none()
             }
@@ -182,7 +182,7 @@ impl Application for Elbey {
                 Key::Named(Named::PageDown) => self.navigate_items(VIEWABLE_LIST_ITEM_COUNT as i32),
                 Key::Named(Named::Enter) => {
                     if let Some(entry) = self.selected_entry() {
-                        (self.flags.app_launcher)(entry).expect("Failed to launch app");
+                        (self.flags.app_launcher)(entry, &self.state.apps).expect("Failed to launch app");
                     }
                     Task::none()
                 }
@@ -308,7 +308,7 @@ mod tests {
 
     #[test]
     fn test_default_app_launch() {
-        let test_launcher: fn(&DesktopEntry) -> anyhow::Result<()> = |e| {
+        let test_launcher: fn(&DesktopEntry, &Vec<DesktopEntry>) -> anyhow::Result<()> = |e, _| {
             assert!(e.appid == "test_app_id_1");
             Ok(())
         };
@@ -324,7 +324,7 @@ mod tests {
 
     #[test]
     fn test_no_apps_try_launch() {
-        let test_launcher: fn(&DesktopEntry) -> anyhow::Result<()> = |_e| {
+        let test_launcher: fn(&DesktopEntry, &Vec<DesktopEntry>) -> anyhow::Result<()> = |e, _| {
             assert!(false); // should never get here
             Ok(())
         };
@@ -340,7 +340,7 @@ mod tests {
 
     #[test]
     fn test_app_navigation() {
-        let test_launcher: fn(&DesktopEntry) -> anyhow::Result<()> = |e| {
+        let test_launcher: fn(&DesktopEntry, &Vec<DesktopEntry>) -> anyhow::Result<()> = |e, _| {
             assert!(e.appid == "test_app_id_2");
             Ok(())
         };
