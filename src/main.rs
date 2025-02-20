@@ -4,7 +4,7 @@ mod app;
 mod cache;
 
 use std::process::exit;
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
 use app::{AppDescriptor, Elbey, ElbeyFlags};
@@ -24,7 +24,7 @@ lazy_static! {
 }
 
 /// Program entrypoint.  Just configures the app, window, and kicks off the iced runtime.
-fn main() -> Result<(), iced_layershell::Error> {    
+fn main() -> Result<(), iced_layershell::Error> {
     let iced_settings = Settings {
         layer_settings: LayerShellSettings {
             size: Some((320, 200)),
@@ -91,25 +91,29 @@ fn find_all_apps() -> Vec<AppDescriptor> {
     let app_list_iter = Iter::new(default_paths())
         .entries(Some(&locales))
         .filter(|entry| !entry.no_display())
-        .map(|e| AppDescriptor::from(e) );
+        .filter(|entry| entry.desktop_entry("Name").is_some()) // Ignore apps w/out titles
+        .filter(|entry| entry.exec().is_some());
 
     // If current desktop is known, filter items that only apply to that desktop
     let mut app_list = if let Some(current_desktop) = current_desktop() {
         app_list_iter
             .filter(|entry| matching_show_in_filter(entry, &current_desktop))
             .filter(|entry| matching_no_show_in_filter(entry, &current_desktop))
+            .map(|e| AppDescriptor::from(e))
             .collect::<Vec<_>>()
     } else {
-        app_list_iter.collect::<Vec<_>>()
+        app_list_iter
+            .map(|e| AppDescriptor::from(e))
+            .collect::<Vec<_>>()
     };
 
-    app_list.sort_by(|a, b| a.name(&locales).cmp(&b.name(&locales)));
+    app_list.sort_by(|a, b| a.title.cmp(&b.title));
 
-    app_list.iter().map(|e| e.into()).collect()
+    app_list
 }
 
 // Return true if the entry and current desktop have a matching element, or if no desktop is available or the entry has no desktop spec.  False otherwise.
-fn matching_show_in_filter(entry: &AppDescriptor, current_desktop: &[String]) -> bool {
+fn matching_show_in_filter(entry: &DesktopEntry, current_desktop: &[String]) -> bool {
     if let Some(show_in) = entry.only_show_in() {
         for show_in_desktop in show_in {
             for desktop in current_desktop.iter() {

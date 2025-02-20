@@ -1,14 +1,15 @@
 [package]
 name = "elbey"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license-file = "LICENSE"
-description = "A bare bones desktop app launcher focusing on simplicity and speed"
+description = "A desktop app launcher focusing on simplicity and speed"
 repository = "https://github.com/kgilmer/elbey"
 readme = "README.md"
 
 [dependencies]
 anyhow = "1.0"
+bincode = "1.3"
 freedesktop-desktop-entry = "0.7"
 iced = "0.13"
 iced_layershell = "0.13"

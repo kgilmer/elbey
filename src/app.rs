@@ -34,7 +34,7 @@ impl From<&DesktopEntry> for AppDescriptor {
     fn from(value: &DesktopEntry) -> Self {
         AppDescriptor {
             appid: value.appid.clone(),
-            title: value.desktop_entry("name").expect("get name").to_string(),
+            title: value.desktop_entry("Name").expect("get name").to_string(),
             exec: value.exec().expect("has exec").to_string(),
             exec_count: 0,
         }
@@ -45,7 +45,7 @@ impl From<DesktopEntry> for AppDescriptor {
     fn from(value: DesktopEntry) -> Self {
         AppDescriptor {
             appid: value.appid.clone(),
-            title: value.desktop_entry("name").expect("get name").to_string(),
+            title: value.desktop_entry("Name").expect("get name").to_string(),
             exec: value.exec().expect("has exec").to_string(),
             exec_count: 0,
         }
@@ -151,7 +151,7 @@ impl Application for Elbey {
                     .contains(index)
             }) // Only show entries in selection range
             .map(|(index, entry)| {
-                let name = entry.desktop_entry("Name").unwrap_or("err");
+                let name = entry.title.as_str();
                 let selected = self.state.selected_index == index;
                 button(name)
                     .style(move |theme, status| {
@@ -308,28 +308,42 @@ impl Elbey {
 
     // Compute the items in the list to display based on the model
     fn text_entry_filter(entry: &AppDescriptor, model: &State) -> bool {
-        if let Some(name) = entry.desktop_entry("Name") {
-            name.to_lowercase().contains(&model.entry.to_lowercase())
-        } else {
-            false
-        }
+        entry
+            .title
+            .to_lowercase()
+            .contains(&model.entry.to_lowercase())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lazy_static::lazy_static;
 
-    static EMPTY_LOADER: fn() -> Vec<DesktopEntry> = || vec![];
+    static EMPTY_LOADER: fn() -> Vec<AppDescriptor> = || vec![];
 
-    static TEST_DESKTOP_ENTRY_1: LazyLock<DesktopEntry> =
-        std::sync::LazyLock::new(|| DesktopEntry::from_appid(String::from("test_app_id_1")));
-    static TEST_DESKTOP_ENTRY_2: LazyLock<DesktopEntry> =
-        std::sync::LazyLock::new(|| DesktopEntry::from_appid(String::from("test_app_id_2")));
-    static TEST_DESKTOP_ENTRY_3: LazyLock<DesktopEntry> =
-        std::sync::LazyLock::new(|| DesktopEntry::from_appid(String::from("test_app_id_3")));
+    lazy_static! {
+        static ref TEST_DESKTOP_ENTRY_1: AppDescriptor = AppDescriptor {
+            appid: "test_app_id_1".to_string(),
+            title: "t1".to_string(),
+            exec: "".to_string(),
+            exec_count: 0
+        };
+        static ref TEST_DESKTOP_ENTRY_2: AppDescriptor = AppDescriptor {
+            appid: "test_app_id_2".to_string(),
+            title: "t2".to_string(),
+            exec: "".to_string(),
+            exec_count: 0
+        };
+        static ref TEST_DESKTOP_ENTRY_3: AppDescriptor = AppDescriptor {
+            appid: "test_app_id_3".to_string(),
+            title: "t2".to_string(),
+            exec: "".to_string(),
+            exec_count: 0
+        };
+    }
 
-    static TEST_ENTRY_LOADER: fn() -> Vec<DesktopEntry> = || {
+    static TEST_ENTRY_LOADER: fn() -> Vec<AppDescriptor> = || {
         vec![
             TEST_DESKTOP_ENTRY_1.clone(),
             TEST_DESKTOP_ENTRY_2.clone(),
@@ -339,7 +353,7 @@ mod tests {
 
     #[test]
     fn test_default_app_launch() {
-        let test_launcher: fn(&DesktopEntry) -> anyhow::Result<()> = |e| {
+        let test_launcher: fn(&AppDescriptor) -> anyhow::Result<()> = |e| {
             assert!(e.appid == "test_app_id_1");
             Ok(())
         };
@@ -355,7 +369,7 @@ mod tests {
 
     #[test]
     fn test_no_apps_try_launch() {
-        let test_launcher: fn(&DesktopEntry) -> anyhow::Result<()> = |e| {
+        let test_launcher: fn(&AppDescriptor) -> anyhow::Result<()> = |e| {
             assert!(false); // should never get here
             Ok(())
         };
@@ -371,7 +385,7 @@ mod tests {
 
     #[test]
     fn test_app_navigation() {
-        let test_launcher: fn(&DesktopEntry) -> anyhow::Result<()> = |e| {
+        let test_launcher: fn(&AppDescriptor) -> anyhow::Result<()> = |e| {
             assert!(e.appid == "test_app_id_2");
             Ok(())
         };
