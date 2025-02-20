@@ -7,7 +7,7 @@ use std::process::exit;
 use std::sync::{Arc, LazyLock, Mutex};
 
 use anyhow::Context;
-use app::{Elbey, ElbeyFlags};
+use app::{AppDescriptor, Elbey, ElbeyFlags};
 use cache::Cache;
 use freedesktop_desktop_entry::{
     current_desktop, default_paths, get_languages_from_env, DesktopEntry, Iter,
@@ -16,13 +16,15 @@ use iced::{Font, Pixels};
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings, StartMode};
 use iced_layershell::Application;
+use lazy_static::lazy_static;
 
-static PROGRAM_NAME: LazyLock<String> = std::sync::LazyLock::new(|| String::from("Elbey"));
-static CACHE: LazyLock<Arc<Mutex<Cache>>> = std::sync::LazyLock::new(|| Arc::new(Mutex::new(Cache::new())));
+lazy_static! {
+    static ref PROGRAM_NAME: String = String::from("Elbey");
+    static ref CACHE: Arc<Mutex<Cache>> = Arc::new(Mutex::new(Cache::new(find_all_apps)));
+}
 
 /// Program entrypoint.  Just configures the app, window, and kicks off the iced runtime.
 fn main() -> Result<(), iced_layershell::Error> {    
-
     let iced_settings = Settings {
         layer_settings: LayerShellSettings {
             size: Some((320, 200)),
@@ -50,12 +52,8 @@ fn main() -> Result<(), iced_layershell::Error> {
 }
 
 /// Launch an app described by `entry`.  This implementation exits the process upon successful launch.
-fn launch_app(entry: &DesktopEntry, entries: &Vec<DesktopEntry>) -> anyhow::Result<()> {
-    let args = shell_words::split(
-        entry
-            .exec()
-            .context("Failed to read exec from app descriptor")?,
-    )?;
+fn launch_app(entry: &AppDescriptor) -> anyhow::Result<()> {
+    let args = shell_words::split(entry.exec.as_str())?;
     let args = args
         .iter()
         // Filter out special freedesktop syntax
@@ -69,13 +67,15 @@ fn launch_app(entry: &DesktopEntry, entries: &Vec<DesktopEntry>) -> anyhow::Resu
         .map(|_| ())?;
 
     if let Ok(cache) = CACHE.lock().as_mut() {
-        cache.update(entries)?;
+        cache.update(entry)?;
+    } else {
+        eprint!("Failed to update cache");
     }
 
     exit(0);
 }
 
-fn load_apps() -> Vec<DesktopEntry> {
+fn load_apps() -> Vec<AppDescriptor> {
     let cache = CACHE.lock().expect("Unable to access cache");
     if let Some(entries) = cache.read_all() {
         entries
@@ -85,12 +85,13 @@ fn load_apps() -> Vec<DesktopEntry> {
 }
 
 /// Load DesktopEntry's from `DesktopIter`
-fn find_all_apps() -> Vec<DesktopEntry> {
+fn find_all_apps() -> Vec<AppDescriptor> {
     let locales = get_languages_from_env();
 
     let app_list_iter = Iter::new(default_paths())
         .entries(Some(&locales))
-        .filter(|entry| !entry.no_display());
+        .filter(|entry| !entry.no_display())
+        .map(|e| AppDescriptor::from(e) );
 
     // If current desktop is known, filter items that only apply to that desktop
     let mut app_list = if let Some(current_desktop) = current_desktop() {
@@ -102,14 +103,13 @@ fn find_all_apps() -> Vec<DesktopEntry> {
         app_list_iter.collect::<Vec<_>>()
     };
 
-    // TODO: bubble frequently used apps to the top
     app_list.sort_by(|a, b| a.name(&locales).cmp(&b.name(&locales)));
 
-    app_list
+    app_list.iter().map(|e| e.into()).collect()
 }
 
 // Return true if the entry and current desktop have a matching element, or if no desktop is available or the entry has no desktop spec.  False otherwise.
-fn matching_show_in_filter(entry: &DesktopEntry, current_desktop: &[String]) -> bool {
+fn matching_show_in_filter(entry: &AppDescriptor, current_desktop: &[String]) -> bool {
     if let Some(show_in) = entry.only_show_in() {
         for show_in_desktop in show_in {
             for desktop in current_desktop.iter() {

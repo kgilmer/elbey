@@ -10,6 +10,7 @@ use iced::widget::button::{primary, text};
 use iced::widget::{button, column, scrollable, text_input, Column};
 use iced::{event, window, Element, Event, Length, Task, Theme};
 use iced_layershell::{to_layer_message, Application};
+use serde::{Deserialize, Serialize};
 
 use crate::PROGRAM_NAME;
 
@@ -21,13 +22,43 @@ static ITEMS_WIDGET_ID: LazyLock<iced::widget::scrollable::Id> =
 // The max number of items to render in the list
 const VIEWABLE_LIST_ITEM_COUNT: usize = 10;
 
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
+pub struct AppDescriptor {
+    pub appid: String,
+    pub title: String,
+    pub exec: String,
+    pub exec_count: usize,
+}
+
+impl From<&DesktopEntry> for AppDescriptor {
+    fn from(value: &DesktopEntry) -> Self {
+        AppDescriptor {
+            appid: value.appid.clone(),
+            title: value.desktop_entry("name").expect("get name").to_string(),
+            exec: value.exec().expect("has exec").to_string(),
+            exec_count: 0,
+        }
+    }
+}
+
+impl From<DesktopEntry> for AppDescriptor {
+    fn from(value: DesktopEntry) -> Self {
+        AppDescriptor {
+            appid: value.appid.clone(),
+            title: value.desktop_entry("name").expect("get name").to_string(),
+            exec: value.exec().expect("has exec").to_string(),
+            exec_count: 0,
+        }
+    }
+}
+
 /// The application model type.  See [the iced book](https://book.iced.rs/) for details.
 #[derive(Debug)]
 pub struct State {
     /// A text entry box where a user can enter list filter criteria
     entry: String,
     /// The complete list of DesktopEntry, as retrieved by lib
-    apps: Vec<DesktopEntry>,
+    apps: Vec<AppDescriptor>,
     /// The index of the item visibly selected in the UI
     selected_index: usize,
     /// A flag to indicate app window has received focus. Work around to some windowing environments passing `unfocused` unexpectedly.
@@ -46,7 +77,7 @@ pub struct Elbey {
 #[derive(Debug, Clone)]
 pub enum ElbeyMessage {
     /// Signals that the `DesktopEntries` have been fully loaded into the vec
-    ModelLoaded(Vec<DesktopEntry>),
+    ModelLoaded(Vec<AppDescriptor>),
     /// Signals that the primary text edit box on the UI has been changed by the user, including the new text.
     EntryUpdate(String),
     /// Signals that the user has taken primary action on a selection.  In the case of a desktop app launcher, the app is launched.
@@ -65,11 +96,11 @@ pub struct ElbeyFlags {
     /**
      * A function that returns a list of `DesktopEntry`s
      */
-    pub apps_loader: fn() -> Vec<DesktopEntry>,
+    pub apps_loader: fn() -> Vec<AppDescriptor>,
     /**
      * A function that launches a process from a `DesktopEntry`
      */
-    pub app_launcher: fn(&DesktopEntry, &Vec<DesktopEntry>) -> anyhow::Result<()>, //TODO ~ return a task that exits app
+    pub app_launcher: fn(&AppDescriptor) -> anyhow::Result<()>, //TODO ~ return a task that exits app
 }
 
 impl Application for Elbey {
@@ -167,7 +198,7 @@ impl Application for Elbey {
             // Launch an application selected by the user
             ElbeyMessage::ExecuteSelected() => {
                 if let Some(entry) = self.selected_entry() {
-                    (self.flags.app_launcher)(entry, &self.state.apps).expect("Failed to launch app");
+                    (self.flags.app_launcher)(entry).expect("Failed to launch app");
                 }
                 Task::none()
             }
@@ -182,7 +213,7 @@ impl Application for Elbey {
                 Key::Named(Named::PageDown) => self.navigate_items(VIEWABLE_LIST_ITEM_COUNT as i32),
                 Key::Named(Named::Enter) => {
                     if let Some(entry) = self.selected_entry() {
-                        (self.flags.app_launcher)(entry, &self.state.apps).expect("Failed to launch app");
+                        (self.flags.app_launcher)(entry).expect("Failed to launch app");
                     }
                     Task::none()
                 }
@@ -255,7 +286,7 @@ impl Application for Elbey {
 
 impl Elbey {
     // Return ref to the selected item from the app list after applying filter
-    fn selected_entry(&self) -> Option<&DesktopEntry> {
+    fn selected_entry(&self) -> Option<&AppDescriptor> {
         self.state
             .apps
             .iter()
@@ -276,7 +307,7 @@ impl Elbey {
     }
 
     // Compute the items in the list to display based on the model
-    fn text_entry_filter(entry: &DesktopEntry, model: &State) -> bool {
+    fn text_entry_filter(entry: &AppDescriptor, model: &State) -> bool {
         if let Some(name) = entry.desktop_entry("Name") {
             name.to_lowercase().contains(&model.entry.to_lowercase())
         } else {
@@ -308,7 +339,7 @@ mod tests {
 
     #[test]
     fn test_default_app_launch() {
-        let test_launcher: fn(&DesktopEntry, &Vec<DesktopEntry>) -> anyhow::Result<()> = |e, _| {
+        let test_launcher: fn(&DesktopEntry) -> anyhow::Result<()> = |e| {
             assert!(e.appid == "test_app_id_1");
             Ok(())
         };
@@ -324,7 +355,7 @@ mod tests {
 
     #[test]
     fn test_no_apps_try_launch() {
-        let test_launcher: fn(&DesktopEntry, &Vec<DesktopEntry>) -> anyhow::Result<()> = |e, _| {
+        let test_launcher: fn(&DesktopEntry) -> anyhow::Result<()> = |e| {
             assert!(false); // should never get here
             Ok(())
         };
@@ -340,7 +371,7 @@ mod tests {
 
     #[test]
     fn test_app_navigation() {
-        let test_launcher: fn(&DesktopEntry, &Vec<DesktopEntry>) -> anyhow::Result<()> = |e, _| {
+        let test_launcher: fn(&DesktopEntry) -> anyhow::Result<()> = |e| {
             assert!(e.appid == "test_app_id_2");
             Ok(())
         };
