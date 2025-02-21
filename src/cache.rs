@@ -16,6 +16,10 @@ impl Cache {
     }
 
     pub fn read_all(&self) -> Option<Vec<AppDescriptor>> {
+        if self.db.is_empty() {
+            return None;
+        }
+
         let scan_key = (0 as i32).to_be_bytes();
         let iter = self.db.range(scan_key..);
 
@@ -31,7 +35,7 @@ impl Cache {
         Some(app_descriptors)
     }
 
-    pub fn update(&mut self, _entry: &AppDescriptor) -> anyhow::Result<()> {
+    pub fn update(&mut self, selected_app: &AppDescriptor) -> anyhow::Result<()> {
         // load data
         let latest_entries = (self.apps_loader)();
         let cached_entry_wrappers = self.read_all();
@@ -40,21 +44,25 @@ impl Cache {
         let mut updated_entry_wrappers: Vec<AppDescriptor> =
             Vec::with_capacity(latest_entries.len());
 
-        for mut e in latest_entries {
+        for mut latest_entry in latest_entries {
             let count = if let Some(ref entry_wrappers) = cached_entry_wrappers {
-                Cache::find_count(&e.appid, &entry_wrappers).unwrap_or(0)
+                Cache::find_count(&latest_entry.appid, &entry_wrappers).unwrap_or(0)
             } else {
                 0
             };
 
-            e.exec_count = count;
+            latest_entry.exec_count = if latest_entry.appid == selected_app.appid {
+                count + 1
+            } else {
+                count
+            } ;
 
-            updated_entry_wrappers.push(e);
+            updated_entry_wrappers.push(latest_entry);
         }
 
         // sort
         updated_entry_wrappers.sort_by(|a, b| a.title.cmp(&b.title));
-        updated_entry_wrappers.sort_by(|a, b| a.exec_count.cmp(&b.exec_count));
+        updated_entry_wrappers.sort_by(|a, b| b.exec_count.cmp(&a.exec_count));
 
         // store
         let mut count: usize = 0;
