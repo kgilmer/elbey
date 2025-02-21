@@ -12,7 +12,7 @@ impl Cache {
         let config = Config::new().path(db_filename());
         let db = config.open().unwrap();
 
-        return Cache { apps_loader, db };
+        Cache { apps_loader, db }
     }
 
     pub fn read_all(&self) -> Option<Vec<AppDescriptor>> {
@@ -20,7 +20,7 @@ impl Cache {
             return None;
         }
 
-        let scan_key = (0 as i32).to_be_bytes();
+        let scan_key = 0_i32.to_be_bytes();
         let iter = self.db.range(scan_key..);
 
         let mut app_descriptors: Vec<AppDescriptor> = vec![];
@@ -46,7 +46,7 @@ impl Cache {
 
         for mut latest_entry in latest_entries {
             let count = if let Some(ref entry_wrappers) = cached_entry_wrappers {
-                Cache::find_count(&latest_entry.appid, &entry_wrappers).unwrap_or(0)
+                Cache::find_count(&latest_entry.appid, entry_wrappers).unwrap_or(0)
             } else {
                 0
             };
@@ -65,13 +65,10 @@ impl Cache {
         updated_entry_wrappers.sort_by(|a, b| b.exec_count.cmp(&a.exec_count));
 
         // store
-        let mut count: usize = 0;
         self.db.clear()?; // Flush previous cache for new snapshot
-        for app_descriptor in updated_entry_wrappers {
+        for (count, app_descriptor) in updated_entry_wrappers.into_iter().enumerate() {
             let encoded: Vec<u8> = bincode::serialize(&app_descriptor)?;
             self.db.insert(count.to_be_bytes(), IVec::from(encoded))?;
-
-            count += 1;
         }
 
         self.db.flush()?;

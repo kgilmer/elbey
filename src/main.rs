@@ -99,11 +99,11 @@ fn find_all_apps() -> Vec<AppDescriptor> {
         app_list_iter
             .filter(|entry| matching_show_in_filter(entry, &current_desktop))
             .filter(|entry| matching_no_show_in_filter(entry, &current_desktop))
-            .map(|e| AppDescriptor::from(e))
+            .map(AppDescriptor::from)
             .collect::<Vec<_>>()
     } else {
         app_list_iter
-            .map(|e| AppDescriptor::from(e))
+            .map(AppDescriptor::from)
             .collect::<Vec<_>>()
     };
 
