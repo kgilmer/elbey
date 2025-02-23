@@ -1,4 +1,4 @@
-//! Elbey - a bare bones desktop app launcher
+//! Elbey - a desktop app launcher
 #![doc(html_logo_url = "https://github.com/kgilmer/elbey/blob/main/elbey.svg")]
 mod app;
 mod cache;
@@ -69,18 +69,20 @@ fn launch_app(entry: &AppDescriptor) -> anyhow::Result<()> {
     if let Ok(cache) = CACHE.lock().as_mut() {
         cache.update(entry)?;
     } else {
-        eprint!("Failed to update cache");
+        eprint!("Failed to acquire cache");
     }
 
     exit(0);
 }
 
 fn load_apps() -> Vec<AppDescriptor> {
-    let cache = CACHE.lock().expect("Unable to access cache");
-    if let Some(entries) = cache.read_all() {
-        entries
-    } else {
+    let cache = CACHE.lock().expect("Failed to acquire cache");
+
+    if cache.is_empty() {
+        // No cache available, probably first launch of current version.  Traverse FS looking for apps.
         find_all_apps()
+    } else {
+        cache.read_all().unwrap_or(find_all_apps())
     }
 }
 
@@ -102,9 +104,7 @@ fn find_all_apps() -> Vec<AppDescriptor> {
             .map(AppDescriptor::from)
             .collect::<Vec<_>>()
     } else {
-        app_list_iter
-            .map(AppDescriptor::from)
-            .collect::<Vec<_>>()
+        app_list_iter.map(AppDescriptor::from).collect::<Vec<_>>()
     };
 
     app_list.sort_by(|a, b| a.title.cmp(&b.title));

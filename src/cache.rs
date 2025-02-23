@@ -1,7 +1,12 @@
+use std::path::PathBuf;
+
 use sled::{Config, Db, IVec};
 
 use crate::app::AppDescriptor;
 
+static SCAN_KEY: [u8; 4] = 0_i32.to_be_bytes();
+
+/// Tracks state to sort apps by usage
 pub(crate) struct Cache {
     apps_loader: fn() -> Vec<AppDescriptor>,
     db: Db,
@@ -9,19 +14,18 @@ pub(crate) struct Cache {
 
 impl Cache {
     pub fn new(apps_loader: fn() -> Vec<AppDescriptor>) -> Self {
-        let config = Config::new().path(db_filename());
+        let config = Config::new().path(Self::resolve_db_file_path());
         let db = config.open().unwrap();
 
         Cache { apps_loader, db }
     }
 
-    pub fn read_all(&self) -> Option<Vec<AppDescriptor>> {
-        if self.db.is_empty() {
-            return None;
-        }
+    pub fn is_empty(&self) -> bool {
+        self.db.is_empty()
+    }
 
-        let scan_key = 0_i32.to_be_bytes();
-        let iter = self.db.range(scan_key..);
+    pub fn read_all(&self) -> Option<Vec<AppDescriptor>> {
+        let iter = self.db.range(SCAN_KEY..);
 
         let mut app_descriptors: Vec<AppDescriptor> = vec![];
         for item in iter {
@@ -35,6 +39,7 @@ impl Cache {
         Some(app_descriptors)
     }
 
+    // Update the cache from local system and update usage stat
     pub fn update(&mut self, selected_app: &AppDescriptor) -> anyhow::Result<()> {
         // load data
         let latest_entries = (self.apps_loader)();
@@ -55,7 +60,7 @@ impl Cache {
                 count + 1
             } else {
                 count
-            } ;
+            };
 
             updated_entry_wrappers.push(latest_entry);
         }
@@ -83,18 +88,14 @@ impl Cache {
         }
         None
     }
-}
 
-fn db_filename() -> String {
-    String::from("/tmp/elbey.bin")
-}
-
-#[cfg(test)]
-mod tests {
-    // use super::*;
-
-    #[test]
-    fn test_something() {
-        assert!(true);
+    fn resolve_db_file_path() -> PathBuf {
+        let mut path = dirs::cache_dir().unwrap();
+        path.push(format!(
+            "{}-{}",
+            env!("CARGO_PKG_NAME"),
+            env!("CARGO_PKG_VERSION")
+        ));
+        path
     }
 }
