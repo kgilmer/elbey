@@ -1,19 +1,22 @@
 //! Functions and other types for `iced` UI to view, filter, and launch apps
 use std::cmp::{max, min};
+use std::path::PathBuf;
 use std::process::exit;
 use std::sync::LazyLock;
 
 use freedesktop_desktop_entry::DesktopEntry;
+use freedesktop_icons::lookup;
 use iced::keyboard::key::Named;
 use iced::keyboard::Key;
 use iced::widget::button::{primary, text};
-use iced::widget::{button, column, scrollable, text_input, Column};
+use iced::widget::{button, column, row, scrollable, svg, text_input, Column, Image, Svg};
 use iced::{event, window, Element, Event, Length, Task, Theme};
 use iced_layershell::{to_layer_message, Application};
 use serde::{Deserialize, Serialize};
 
 use crate::PROGRAM_NAME;
 
+static DEFAULT_ICON: &[u8] = include_bytes!("../elbey.svg");
 static ENTRY_WIDGET_ID: LazyLock<iced::widget::text_input::Id> =
     std::sync::LazyLock::new(|| iced::widget::text_input::Id::new("entry"));
 static ITEMS_WIDGET_ID: LazyLock<iced::widget::scrollable::Id> =
@@ -23,22 +26,40 @@ static ITEMS_WIDGET_ID: LazyLock<iced::widget::scrollable::Id> =
 const VIEWABLE_LIST_ITEM_COUNT: usize = 10;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
+pub enum IconResourceType {
+    IMAGE(PathBuf),
+    SVG(PathBuf),
+    NONE,
+}
+
+impl From<Option<PathBuf>> for IconResourceType {
+    fn from(value: Option<PathBuf>) -> Self {
+        match value {
+            None => IconResourceType::NONE,
+            Some(path) => match path.extension() {
+                None => IconResourceType::NONE,
+                Some(extension) => {
+                    let extension = extension.to_str().expect("Can read str");
+                    if extension.ends_with("svg") || extension.ends_with("SVG") {
+                        IconResourceType::SVG(path)
+                    } else if path.ends_with("png") || path.ends_with("jpg") {
+                        IconResourceType::IMAGE(path)
+                    } else {
+                        IconResourceType::NONE
+                    }
+                }
+            },
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub struct AppDescriptor {
     pub appid: String,
     pub title: String,
     pub exec: String,
     pub exec_count: usize,
-}
-
-impl From<&DesktopEntry> for AppDescriptor {
-    fn from(value: &DesktopEntry) -> Self {
-        AppDescriptor {
-            appid: value.appid.clone(),
-            title: value.desktop_entry("Name").expect("get name").to_string(),
-            exec: value.exec().expect("has exec").to_string(),
-            exec_count: 0,
-        }
-    }
+    pub icon: IconResourceType,
 }
 
 impl From<DesktopEntry> for AppDescriptor {
@@ -48,6 +69,11 @@ impl From<DesktopEntry> for AppDescriptor {
             title: value.desktop_entry("Name").expect("get name").to_string(),
             exec: value.exec().expect("has exec").to_string(),
             exec_count: 0,
+            icon: if let Some(icon_name) = value.icon() {
+                lookup(icon_name).with_size(24).with_cache().find().into()
+            } else {
+                IconResourceType::NONE
+            },
         }
     }
 }
@@ -153,7 +179,24 @@ impl Application for Elbey {
             .map(|(index, entry)| {
                 let name = entry.title.as_str();
                 let selected = self.state.selected_index == index;
-                button(name)
+
+                let content = if index < 8 {
+                    match &entry.icon {
+                        IconResourceType::IMAGE(path) => {
+                            row![Image::new(path).width(24).height(24), name]
+                        }
+                        IconResourceType::SVG(path) => {
+                            row![Svg::new(path).width(24).height(24), name]
+                        }
+                        IconResourceType::NONE => {
+                            row![name]
+                        }
+                    }
+                } else {
+                    row![name]
+                };
+
+                button(content)
                     .style(move |theme, status| {
                         if selected {
                             primary(theme, status)
@@ -327,19 +370,22 @@ mod tests {
             appid: "test_app_id_1".to_string(),
             title: "t1".to_string(),
             exec: "".to_string(),
-            exec_count: 0
+            exec_count: 0,
+            icon: IconResourceType::NONE,
         };
         static ref TEST_DESKTOP_ENTRY_2: AppDescriptor = AppDescriptor {
             appid: "test_app_id_2".to_string(),
             title: "t2".to_string(),
             exec: "".to_string(),
-            exec_count: 0
+            exec_count: 0,
+            icon: IconResourceType::NONE,
         };
         static ref TEST_DESKTOP_ENTRY_3: AppDescriptor = AppDescriptor {
             appid: "test_app_id_3".to_string(),
             title: "t2".to_string(),
             exec: "".to_string(),
-            exec_count: 0
+            exec_count: 0,
+            icon: IconResourceType::NONE,
         };
     }
 
