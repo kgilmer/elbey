@@ -8,11 +8,12 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
 use app::{AppDescriptor, Elbey, ElbeyFlags};
+use argh::FromArgs;
 use cache::Cache;
 use freedesktop_desktop_entry::{
     current_desktop, default_paths, get_languages_from_env, DesktopEntry, Iter,
 };
-use iced::{Font, Pixels};
+use iced::{Font, Pixels, Theme};
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings, StartMode};
 use iced_layershell::Application;
@@ -23,11 +24,59 @@ lazy_static! {
     static ref CACHE: Arc<Mutex<Cache>> = Arc::new(Mutex::new(Cache::new(find_all_apps)));
 }
 
+#[derive(FromArgs)]
+/// Reach new heights.
+struct EbleyArgs {
+    /// height
+    #[argh(option)]
+    height: Option<u32>,
+
+    /// width
+    #[argh(option)]
+    width: Option<u32>,
+
+    /// theme name: CatppuccinFrappe,CatppuccinLatte,CatppuccinMacchiato,CatppuccinMocha,Dark,Dracula,Ferra,GruvboxDark,GruvboxLight,KanagawaDragon,KanagawaLotus,KanagawaWave,Light,Moonfly,Nightfly,Nord,Oxocarbon,TokyoNight,TokyoNightLight,TokyoNightStorm
+    #[argh(option)]
+    theme: Option<String>,
+
+    /// font size
+    #[argh(option)]
+    font_size: Option<u16>,
+}
+
+fn parse_theme(name: &str) -> Option<Theme> {
+    match name {
+        "CatppuccinFrappe" => Some(Theme::CatppuccinFrappe),
+        "CatppuccinLatte" => Some(Theme::CatppuccinLatte),
+        "CatppuccinMacchiato" => Some(Theme::CatppuccinMacchiato),
+        "CatppuccinMocha" => Some(Theme::CatppuccinMocha),
+        "Dark" => Some(Theme::Dark),
+        "Dracula" => Some(Theme::Dracula),
+        "Ferra" => Some(Theme::Ferra),
+        "GruvboxDark" => Some(Theme::GruvboxDark),
+        "GruvboxLight" => Some(Theme::GruvboxLight),
+        "KanagawaDragon" => Some(Theme::KanagawaDragon),
+        "KanagawaLotus" => Some(Theme::KanagawaLotus),
+        "KanagawaWave" => Some(Theme::KanagawaWave),
+        "Light" => Some(Theme::Light),
+        "Moonfly" => Some(Theme::Moonfly),
+        "Nightfly" => Some(Theme::Nightfly),
+        "Nord" => Some(Theme::Nord),
+        "Oxocarbon" => Some(Theme::Oxocarbon),
+        "TokyoNight" => Some(Theme::TokyoNight),
+        "TokyoNightLight" => Some(Theme::TokyoNightLight),
+        "TokyoNightStorm" => Some(Theme::TokyoNightStorm),
+        _ => None,
+    }
+}
+
 /// Program entrypoint.  Just configures the app, window, and kicks off the iced runtime.
 fn main() -> Result<(), iced_layershell::Error> {
+    let args: EbleyArgs = argh::from_env();
+
     let iced_settings = Settings {
         layer_settings: LayerShellSettings {
-            size: Some((320, 200)),
+            size: Some((args.width.unwrap_or(320), args.height.unwrap_or(200))),
             exclusive_zone: 200,
             anchor: Anchor::all(),
             start_mode: StartMode::Active,
@@ -39,11 +88,24 @@ fn main() -> Result<(), iced_layershell::Error> {
         flags: ElbeyFlags {
             apps_loader: load_apps,
             app_launcher: launch_app,
+            theme: if args.theme.is_some() {
+                if let Some(theme) = parse_theme(&args.theme.unwrap()) {
+                    theme
+                } else {
+                    Theme::Nord
+                }
+            } else {
+                Theme::Nord
+            },
+            size: (
+                args.width.unwrap_or(320).try_into().unwrap(),
+                args.height.unwrap_or(200).try_into().unwrap(),
+            ),
         },
         id: Some(PROGRAM_NAME.to_string()),
         fonts: vec![],
         default_font: Font::DEFAULT,
-        default_text_size: Pixels::from(18),
+        default_text_size: Pixels::from(args.font_size.unwrap_or(18)),
         antialiasing: true,
         virtual_keyboard_support: None,
     };
