@@ -1,12 +1,14 @@
-//! Elbey - a bare bones desktop app launcher
+//! Elbey - a desktop app launcher
 #![doc(html_logo_url = "https://github.com/kgilmer/elbey/blob/main/elbey.svg")]
 mod app;
+mod cache;
 
 use std::process::exit;
-use std::sync::LazyLock;
+use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
-use app::{Elbey, ElbeyFlags};
+use app::{AppDescriptor, Elbey, ElbeyFlags};
+use cache::Cache;
 use freedesktop_desktop_entry::{
     current_desktop, default_paths, get_languages_from_env, DesktopEntry, Iter,
 };
@@ -14,8 +16,12 @@ use iced::{Font, Pixels};
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings, StartMode};
 use iced_layershell::Application;
+use lazy_static::lazy_static;
 
-static PROGRAM_NAME: LazyLock<String> = std::sync::LazyLock::new(|| String::from("Elbey"));
+lazy_static! {
+    static ref PROGRAM_NAME: String = String::from("Elbey");
+    static ref CACHE: Arc<Mutex<Cache>> = Arc::new(Mutex::new(Cache::new(find_all_apps)));
+}
 
 /// Program entrypoint.  Just configures the app, window, and kicks off the iced runtime.
 fn main() -> Result<(), iced_layershell::Error> {
@@ -46,12 +52,8 @@ fn main() -> Result<(), iced_layershell::Error> {
 }
 
 /// Launch an app described by `entry`.  This implementation exits the process upon successful launch.
-fn launch_app(entry: &DesktopEntry) -> anyhow::Result<()> {
-    let args = shell_words::split(
-        entry
-            .exec()
-            .context("Failed to read exec from app descriptor")?,
-    )?;
+fn launch_app(entry: &AppDescriptor) -> anyhow::Result<()> {
+    let args = shell_words::split(entry.exec.as_str())?;
     let args = args
         .iter()
         // Filter out special freedesktop syntax
@@ -64,29 +66,48 @@ fn launch_app(entry: &DesktopEntry) -> anyhow::Result<()> {
         .context("Failed to spawn app")
         .map(|_| ())?;
 
+    if let Ok(cache) = CACHE.lock().as_mut() {
+        cache.update(entry)?;
+    } else {
+        eprint!("Failed to acquire cache");
+    }
+
     exit(0);
 }
 
+fn load_apps() -> Vec<AppDescriptor> {
+    let cache = CACHE.lock().expect("Failed to acquire cache");
+
+    if cache.is_empty() {
+        // No cache available, probably first launch of current version.  Traverse FS looking for apps.
+        find_all_apps()
+    } else {
+        cache.read_all().unwrap_or(find_all_apps())
+    }
+}
+
 /// Load DesktopEntry's from `DesktopIter`
-fn load_apps() -> Vec<DesktopEntry> {
+fn find_all_apps() -> Vec<AppDescriptor> {
     let locales = get_languages_from_env();
 
     let app_list_iter = Iter::new(default_paths())
         .entries(Some(&locales))
-        .filter(|entry| !entry.no_display());
+        .filter(|entry| !entry.no_display())
+        .filter(|entry| entry.desktop_entry("Name").is_some()) // Ignore apps w/out titles
+        .filter(|entry| entry.exec().is_some());
 
     // If current desktop is known, filter items that only apply to that desktop
     let mut app_list = if let Some(current_desktop) = current_desktop() {
         app_list_iter
             .filter(|entry| matching_show_in_filter(entry, &current_desktop))
             .filter(|entry| matching_no_show_in_filter(entry, &current_desktop))
+            .map(AppDescriptor::from)
             .collect::<Vec<_>>()
     } else {
-        app_list_iter.collect::<Vec<_>>()
+        app_list_iter.map(AppDescriptor::from).collect::<Vec<_>>()
     };
 
-    // TODO: bubble frequently used apps to the top
-    app_list.sort_by(|a, b| a.name(&locales).cmp(&b.name(&locales)));
+    app_list.sort_by(|a, b| a.title.cmp(&b.title));
 
     app_list
 }

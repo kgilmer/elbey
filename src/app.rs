@@ -1,18 +1,22 @@
 //! Functions and other types for `iced` UI to view, filter, and launch apps
 use std::cmp::{max, min};
+use std::path::PathBuf;
 use std::process::exit;
 use std::sync::LazyLock;
 
 use freedesktop_desktop_entry::DesktopEntry;
+use freedesktop_icons::lookup;
 use iced::keyboard::key::Named;
 use iced::keyboard::Key;
 use iced::widget::button::{primary, text};
-use iced::widget::{button, column, scrollable, text_input, Column};
+use iced::widget::{button, column, row, scrollable, svg, text_input, Column, Image, Svg};
 use iced::{event, window, Element, Event, Length, Task, Theme};
 use iced_layershell::{to_layer_message, Application};
+use serde::{Deserialize, Serialize};
 
 use crate::PROGRAM_NAME;
 
+static DEFAULT_ICON: &[u8] = include_bytes!("../elbey.svg");
 static ENTRY_WIDGET_ID: LazyLock<iced::widget::text_input::Id> =
     std::sync::LazyLock::new(|| iced::widget::text_input::Id::new("entry"));
 static ITEMS_WIDGET_ID: LazyLock<iced::widget::scrollable::Id> =
@@ -21,13 +25,66 @@ static ITEMS_WIDGET_ID: LazyLock<iced::widget::scrollable::Id> =
 // The max number of items to render in the list
 const VIEWABLE_LIST_ITEM_COUNT: usize = 10;
 
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
+pub enum IconResourceType {
+    IMAGE(PathBuf),
+    SVG(PathBuf),
+    NONE,
+}
+
+impl From<Option<PathBuf>> for IconResourceType {
+    fn from(value: Option<PathBuf>) -> Self {
+        match value {
+            None => IconResourceType::NONE,
+            Some(path) => match path.extension() {
+                None => IconResourceType::NONE,
+                Some(extension) => {
+                    let extension = extension.to_str().expect("Can read str");
+                    if extension.ends_with("svg") || extension.ends_with("SVG") {
+                        IconResourceType::SVG(path)
+                    } else if path.ends_with("png") || path.ends_with("jpg") {
+                        IconResourceType::IMAGE(path)
+                    } else {
+                        IconResourceType::NONE
+                    }
+                }
+            },
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
+pub struct AppDescriptor {
+    pub appid: String,
+    pub title: String,
+    pub exec: String,
+    pub exec_count: usize,
+    pub icon: IconResourceType,
+}
+
+impl From<DesktopEntry> for AppDescriptor {
+    fn from(value: DesktopEntry) -> Self {
+        AppDescriptor {
+            appid: value.appid.clone(),
+            title: value.desktop_entry("Name").expect("get name").to_string(),
+            exec: value.exec().expect("has exec").to_string(),
+            exec_count: 0,
+            icon: if let Some(icon_name) = value.icon() {
+                lookup(icon_name).with_size(24).with_cache().find().into()
+            } else {
+                IconResourceType::NONE
+            },
+        }
+    }
+}
+
 /// The application model type.  See [the iced book](https://book.iced.rs/) for details.
 #[derive(Debug)]
 pub struct State {
     /// A text entry box where a user can enter list filter criteria
     entry: String,
     /// The complete list of DesktopEntry, as retrieved by lib
-    apps: Vec<DesktopEntry>,
+    apps: Vec<AppDescriptor>,
     /// The index of the item visibly selected in the UI
     selected_index: usize,
     /// A flag to indicate app window has received focus. Work around to some windowing environments passing `unfocused` unexpectedly.
@@ -46,7 +103,7 @@ pub struct Elbey {
 #[derive(Debug, Clone)]
 pub enum ElbeyMessage {
     /// Signals that the `DesktopEntries` have been fully loaded into the vec
-    ModelLoaded(Vec<DesktopEntry>),
+    ModelLoaded(Vec<AppDescriptor>),
     /// Signals that the primary text edit box on the UI has been changed by the user, including the new text.
     EntryUpdate(String),
     /// Signals that the user has taken primary action on a selection.  In the case of a desktop app launcher, the app is launched.
@@ -65,11 +122,11 @@ pub struct ElbeyFlags {
     /**
      * A function that returns a list of `DesktopEntry`s
      */
-    pub apps_loader: fn() -> Vec<DesktopEntry>,
+    pub apps_loader: fn() -> Vec<AppDescriptor>,
     /**
      * A function that launches a process from a `DesktopEntry`
      */
-    pub app_launcher: fn(&DesktopEntry) -> anyhow::Result<()>, //TODO ~ return a task that exits app
+    pub app_launcher: fn(&AppDescriptor) -> anyhow::Result<()>, //TODO ~ return a task that exits app
 }
 
 impl Application for Elbey {
@@ -120,9 +177,26 @@ impl Application for Elbey {
                     .contains(index)
             }) // Only show entries in selection range
             .map(|(index, entry)| {
-                let name = entry.desktop_entry("Name").unwrap_or("err");
+                let name = entry.title.as_str();
                 let selected = self.state.selected_index == index;
-                button(name)
+
+                let content = if index < 8 {
+                    match &entry.icon {
+                        IconResourceType::IMAGE(path) => {
+                            row![Image::new(path).width(24).height(24), name]
+                        }
+                        IconResourceType::SVG(path) => {
+                            row![Svg::new(path).width(24).height(24), name]
+                        }
+                        IconResourceType::NONE => {
+                            row![name]
+                        }
+                    }
+                } else {
+                    row![name]
+                };
+
+                button(content)
                     .style(move |theme, status| {
                         if selected {
                             primary(theme, status)
@@ -255,7 +329,7 @@ impl Application for Elbey {
 
 impl Elbey {
     // Return ref to the selected item from the app list after applying filter
-    fn selected_entry(&self) -> Option<&DesktopEntry> {
+    fn selected_entry(&self) -> Option<&AppDescriptor> {
         self.state
             .apps
             .iter()
@@ -276,29 +350,46 @@ impl Elbey {
     }
 
     // Compute the items in the list to display based on the model
-    fn text_entry_filter(entry: &DesktopEntry, model: &State) -> bool {
-        if let Some(name) = entry.desktop_entry("Name") {
-            name.to_lowercase().contains(&model.entry.to_lowercase())
-        } else {
-            false
-        }
+    fn text_entry_filter(entry: &AppDescriptor, model: &State) -> bool {
+        entry
+            .title
+            .to_lowercase()
+            .contains(&model.entry.to_lowercase())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lazy_static::lazy_static;
 
-    static EMPTY_LOADER: fn() -> Vec<DesktopEntry> = || vec![];
+    static EMPTY_LOADER: fn() -> Vec<AppDescriptor> = || vec![];
 
-    static TEST_DESKTOP_ENTRY_1: LazyLock<DesktopEntry> =
-        std::sync::LazyLock::new(|| DesktopEntry::from_appid(String::from("test_app_id_1")));
-    static TEST_DESKTOP_ENTRY_2: LazyLock<DesktopEntry> =
-        std::sync::LazyLock::new(|| DesktopEntry::from_appid(String::from("test_app_id_2")));
-    static TEST_DESKTOP_ENTRY_3: LazyLock<DesktopEntry> =
-        std::sync::LazyLock::new(|| DesktopEntry::from_appid(String::from("test_app_id_3")));
+    lazy_static! {
+        static ref TEST_DESKTOP_ENTRY_1: AppDescriptor = AppDescriptor {
+            appid: "test_app_id_1".to_string(),
+            title: "t1".to_string(),
+            exec: "".to_string(),
+            exec_count: 0,
+            icon: IconResourceType::NONE,
+        };
+        static ref TEST_DESKTOP_ENTRY_2: AppDescriptor = AppDescriptor {
+            appid: "test_app_id_2".to_string(),
+            title: "t2".to_string(),
+            exec: "".to_string(),
+            exec_count: 0,
+            icon: IconResourceType::NONE,
+        };
+        static ref TEST_DESKTOP_ENTRY_3: AppDescriptor = AppDescriptor {
+            appid: "test_app_id_3".to_string(),
+            title: "t2".to_string(),
+            exec: "".to_string(),
+            exec_count: 0,
+            icon: IconResourceType::NONE,
+        };
+    }
 
-    static TEST_ENTRY_LOADER: fn() -> Vec<DesktopEntry> = || {
+    static TEST_ENTRY_LOADER: fn() -> Vec<AppDescriptor> = || {
         vec![
             TEST_DESKTOP_ENTRY_1.clone(),
             TEST_DESKTOP_ENTRY_2.clone(),
@@ -308,7 +399,7 @@ mod tests {
 
     #[test]
     fn test_default_app_launch() {
-        let test_launcher: fn(&DesktopEntry) -> anyhow::Result<()> = |e| {
+        let test_launcher: fn(&AppDescriptor) -> anyhow::Result<()> = |e| {
             assert!(e.appid == "test_app_id_1");
             Ok(())
         };
@@ -324,7 +415,7 @@ mod tests {
 
     #[test]
     fn test_no_apps_try_launch() {
-        let test_launcher: fn(&DesktopEntry) -> anyhow::Result<()> = |_e| {
+        let test_launcher: fn(&AppDescriptor) -> anyhow::Result<()> = |_e| {
             assert!(false); // should never get here
             Ok(())
         };
@@ -340,7 +431,7 @@ mod tests {
 
     #[test]
     fn test_app_navigation() {
-        let test_launcher: fn(&DesktopEntry) -> anyhow::Result<()> = |e| {
+        let test_launcher: fn(&AppDescriptor) -> anyhow::Result<()> = |e| {
             assert!(e.appid == "test_app_id_2");
             Ok(())
         };
