@@ -1,0 +1,17 @@
+#!/usr/bin/make -f
+%:
+	dh $@ --buildsystem cargo
+
+# See https://blog.shadura.me/2020/12/22/vendoring-rust-in-debian-derivative/
+include /usr/share/dpkg/pkg-info.mk
+
+override_dh_auto_test:
+	dh_auto_test -- test --all
+
+override_dh_auto_configure:
+	dh_auto_configure $@
+	for d in vendor/* ; \
+	do \
+		[ -L debian/cargo_registry/$$(basename $$d) ] && rm debian/cargo_registry/$$(basename $$d) ; \
+		ln -rs $$d debian/cargo_registry ; \
+	done
