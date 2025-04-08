@@ -9,13 +9,13 @@ readme = "README.md"
 
 [dependencies]
 anyhow = "1.0"
-argh = "0.1.13"
+argh = "0.1"
 bincode = "1.3"
 dirs = "6"
 freedesktop-desktop-entry = "0.7"
 iced = "0.13"
 iced_layershell = "0.13"
-lazy_static = "1.5.0"
+lazy_static = "1.5"
 serde = { version = "1.0", features = ["serde_derive"] }
 shell-words = "^1"
 sled = "0.34"
