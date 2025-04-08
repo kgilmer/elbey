@@ -101,6 +101,10 @@ pub struct ElbeyFlags {
      * A function that launches a process from a `DesktopEntry`
      */
     pub app_launcher: fn(&AppDescriptor) -> anyhow::Result<()>, //TODO ~ return a task that exits app
+
+    pub theme: Theme,
+
+    pub size: (u16, u16),
 }
 
 impl Application for Elbey {
@@ -173,9 +177,9 @@ impl Application for Elbey {
             text_input("drun", &self.state.entry)
                 .id(ENTRY_WIDGET_ID.clone())
                 .on_input(ElbeyMessage::EntryUpdate)
-                .width(320),
+                .width(self.flags.size.0),
             scrollable(Column::with_children(app_elements))
-                .width(320)
+                .width(self.flags.size.0)
                 .id(ITEMS_WIDGET_ID.clone()),
         ]
         .into()
@@ -280,7 +284,7 @@ impl Application for Elbey {
     }
 
     fn theme(&self) -> Self::Theme {
-        Theme::Nord
+        self.flags.theme.clone()
     }
 }
 
@@ -361,6 +365,8 @@ mod tests {
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: test_launcher,
+            theme: Theme::default(),
+            size: (0, 0),
         });
 
         let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER()));
@@ -377,6 +383,8 @@ mod tests {
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: test_launcher,
+            theme: Theme::default(),
+            size: (0, 0),
         });
 
         let _ = unit.update(ElbeyMessage::ModelLoaded(EMPTY_LOADER()));
@@ -393,6 +401,8 @@ mod tests {
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: test_launcher,
+            theme: Theme::default(),
+            size: (0, 0),
         });
 
         let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER()));
