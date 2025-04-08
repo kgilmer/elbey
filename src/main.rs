@@ -13,7 +13,8 @@ use cache::Cache;
 use freedesktop_desktop_entry::{
     current_desktop, default_paths, get_languages_from_env, DesktopEntry, Iter,
 };
-use iced::{Font, Pixels, Theme};
+use iced::theme::{Custom, Palette};
+use iced::{Color, Font, Pixels, Theme};
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings, StartMode};
 use iced_layershell::Application;
@@ -25,7 +26,7 @@ lazy_static! {
 }
 
 #[derive(FromArgs)]
-/// Reach new heights.
+/// Desktop app launcher
 struct EbleyArgs {
     /// height
     #[argh(option)]
@@ -35,7 +36,7 @@ struct EbleyArgs {
     #[argh(option)]
     width: Option<u32>,
 
-    /// theme name: CatppuccinFrappe,CatppuccinLatte,CatppuccinMacchiato,CatppuccinMocha,Dark,Dracula,Ferra,GruvboxDark,GruvboxLight,KanagawaDragon,KanagawaLotus,KanagawaWave,Light,Moonfly,Nightfly,Nord,Oxocarbon,TokyoNight,TokyoNightLight,TokyoNightStorm
+    /// theme name: CatppuccinFrappe,CatppuccinLatte,CatppuccinMacchiato,CatppuccinMocha,Dark,Dracula,Ferra,GruvboxDark,GruvboxLight,KanagawaDragon,KanagawaLotus,KanagawaWave,Light,Moonfly,Nightfly,Nord,Oxocarbon,TokyoNight,TokyoNightLight,TokyoNightStorm,AyuMirage
     #[argh(option)]
     theme: Option<String>,
 
@@ -66,6 +67,16 @@ fn parse_theme(name: &str) -> Option<Theme> {
         "TokyoNight" => Some(Theme::TokyoNight),
         "TokyoNightLight" => Some(Theme::TokyoNightLight),
         "TokyoNightStorm" => Some(Theme::TokyoNightStorm),
+        "AyuMirage" => Some(Theme::Custom(Arc::new(Custom::new(
+            "AyuMirage".to_string(),
+            Palette {
+                background: Color::parse("1F2430").expect("Cannot parse color"),
+                text: Color::parse("637599").expect("Cannot parse color"),
+                primary: Color::parse("171B24").expect("Cannot parse color"),
+                success: Color::parse("D5FF80").expect("Cannot parse color"),
+                danger: Color::parse("12151C").expect("Cannot parse color"),
+            },
+        )))),
         _ => None,
     }
 }
