@@ -12,7 +12,7 @@ use iced::widget::button::{primary, text as text_style};
 use iced::widget::image::Handle as ImageHandle;
 use iced::widget::svg::Handle as SvgHandle;
 use iced::widget::{
-    button, column, image, row, scrollable, svg, text, text_input, Column, Space,
+    button, column, image, row, scrollable, svg, text, text_input, Column,
 };
 use iced::{event, window, Alignment, Element, Event, Length, Task, Theme};
 use iced_layershell::{to_layer_message, Application};
@@ -44,6 +44,9 @@ static FALLBACK_ICON_DATA: &[u8] = r##"<?xml version="1.0" encoding="UTF-8" stan
   <path fill="#fff" d="m8.9257729 27.145172.7384498-1.024184c.6367493.268492 1.3006183.485069 1.9861833.644885l-.005812 1.576858c.427728.088335.86301.156136 1.304105.204371l.481774-1.501889c.344041.028477.691764.044167 1.043361.044167.351209 0 .699124-.015497 1.043166-.044167l.481775 1.501889c.441288-.048235.876376-.116036 1.304104-.204371l-.006005-1.577051c.685758-.159623 1.349433-.3762 1.986182-.644692l.92248 1.279502c.402351-.182094.794241-.382591 1.174895-.600522l-.492817-1.498016c.59723-.36225 1.161723-.773319 1.687471-1.227972l1.272141.931779c.325638-.296581.637329-.608272.933716-.93391l-.931585-1.271947c.454847-.525748.865916-1.090047 1.228166-1.687665l1.498015.493011c.217932-.380848.418623-.772932.600329-1.175088l-1.279308-.922287c.268492-.636749.485068-1.300618.645079-1.986376l1.576663.005811c.088335-.427727.156137-.86301.204178-1.304298l-1.501695-.481774c.028864-.343848.044167-.691764.044167-1.043167 0-.351403-.015691-.699125-.044167-1.043361l1.501695-.481774c-.047847-.441094-.116037-.876183-.203984-1.304104l-1.577051.006005c-.159817-.685759-.376393-1.349627-.644691-1.9861811l1.279308-.9222887c-.181707-.4023513-.382591-.7942415-.600135-1.1750898l-1.498209.4930113c-.362251-.5974244-.773319-1.1617232-1.227973-1.6872772l.931586-1.2721409c-.278372-.3058794-.571078-.5980048-.875408-.8781198L5.0669275 23.285938l1.0069418 1.006942.2987118-.218706c.5257484.454653 1.0900465.865722 1.6874698 1.227972l-.2419526.735157 1.1080622 1.108062-.0003876-.000193zm19.5232031 5.045944c0-6.484682 4.233883-11.979469 10.08724-13.874023l-2.226972-2.227167c-.016854.006975-.0339.01298-.05056.020147l-.181513-.251832-1.412004-1.412004c-.463178.2189-.91667.45446-1.359314.707648l.694089 2.109193c-.841314.509669-1.635748 1.08869-2.375747 1.728732l-1.79111-1.311659c-.458721.41746-.897297.856036-1.314564 1.314565l1.311465 1.790914c-.640041.740195-1.218868 1.534628-1.728731 2.375748l-2.109387-.694089c-.306654.536403-.589093 1.088304-.844994 1.654732l1.801182 1.298293c-.377942.896329-.682852 1.831014-.907758 2.796501l-2.219999-.008524c-.124172.602266-.219869 1.215188-.287476 1.836051l2.114423.678398c-.040293.484293-.061991.97401-.061991 1.46857 0 .494753.021698.98447.061991 1.468763l-2.114423.677816c.067607.621251.163304 1.233979.28767 1.836245l2.219805-.00833c.224906.965487.529816 1.900172.907758 2.796502l-1.801182 1.298486c.142382.31479.293869.624931.452136.930423l3.804023-3.803636c-.61602-1.614245-.95425-3.365836-.95425-5.196269l.000193-.000194z" opacity=".49999997"/>
   <path d="M5.2050478 23.424252 24.285801 42.505005l19.219261-19.219261-.715099-.682219-18.479649 18.438152L5.2050478 23.424059v.000193z" opacity=".34999999"/>
 </svg>"##.as_bytes();
+
+static FALLBACK_ICON_HANDLE: LazyLock<IconHandle> =
+    LazyLock::new(|| IconHandle::Vector(SvgHandle::from_memory(FALLBACK_ICON_DATA)));
 
 static ITEMS_WIDGET_ID: LazyLock<iced::widget::scrollable::Id> =
     std::sync::LazyLock::new(|| iced::widget::scrollable::Id::new("items"));
@@ -86,7 +89,7 @@ impl From<&DesktopEntry> for AppDescriptor {
             exec: value.exec().expect("has exec").to_string(),
             exec_count: 0,
             icon_name: value.icon().map(str::to_string),
-            icon_handle: None,
+            icon_handle: Some(FALLBACK_ICON_HANDLE.clone()),
         }
     }
 }
@@ -99,7 +102,7 @@ impl From<DesktopEntry> for AppDescriptor {
             exec: value.exec().expect("has exec").to_string(),
             exec_count: 0,
             icon_name: value.icon().map(str::to_string),
-            icon_handle: None,
+            icon_handle: Some(FALLBACK_ICON_HANDLE.clone()),
         }
     }
 }
@@ -213,26 +216,20 @@ impl Application for Elbey {
             .map(|(index, entry)| {
                 let name = entry.title.as_str();
                 let selected = self.state.selected_index == index;
-                let content = if let Some(icon_handle) = &entry.icon_handle {
-                    let icon: Element<'_, ElbeyMessage> = match icon_handle {
-                        IconHandle::Raster(handle) => image(handle.clone())
-                            .width(Length::Fixed(self.flags.icon_size.into()))
-                            .height(Length::Fixed(self.flags.icon_size.into()))
-                            .into(),
-                        IconHandle::Vector(handle) => svg(handle.clone())
-                            .width(Length::Fixed(self.flags.icon_size.into()))
-                            .height(Length::Fixed(self.flags.icon_size.into()))
-                            .into(),
-                    };
-                    row![icon, text(name)].spacing(10).align_y(Alignment::Center)
-                } else {
-                    row![
-                        Space::with_width(Length::Fixed(self.flags.icon_size.into())),
-                        text(name)
-                    ]
-                    .spacing(10)
-                    .align_y(Alignment::Center)
+                let icon_handle = entry.icon_handle.as_ref().unwrap();
+                let icon: Element<'_, ElbeyMessage> = match icon_handle {
+                    IconHandle::Raster(handle) => image(handle.clone())
+                        .width(Length::Fixed(self.flags.icon_size.into()))
+                        .height(Length::Fixed(self.flags.icon_size.into()))
+                        .into(),
+                    IconHandle::Vector(handle) => svg(handle.clone())
+                        .width(Length::Fixed(self.flags.icon_size.into()))
+                        .height(Length::Fixed(self.flags.icon_size.into()))
+                        .into(),
                 };
+                let content = row![icon, text(name)]
+                    .spacing(10)
+                    .align_y(Alignment::Center);
 
                 button(content)
                     .style(if selected { primary } else { text_style })
@@ -297,18 +294,15 @@ impl Application for Elbey {
                 Task::none()
             }
             ElbeyMessage::IconLoaded(index, path) => {
-                if let Some(app) = self.state.apps.get_mut(index) {
-                    app.icon_handle = if let Some(p) = path {
-                        if p.extension().and_then(|s| s.to_str()) == Some("svg") {
-                            Some(IconHandle::Vector(SvgHandle::from_path(p)))
-                        } else {
-                            Some(IconHandle::Raster(ImageHandle::from_path(p)))
-                        }
-                    } else {
-                        Some(IconHandle::Vector(SvgHandle::from_memory(
-                            FALLBACK_ICON_DATA,
-                        )))
-                    };
+                if let Some(p) = path {
+                    if let Some(app) = self.state.apps.get_mut(index) {
+                        app.icon_handle =
+                            if p.extension().and_then(|s| s.to_str()) == Some("svg") {
+                                Some(IconHandle::Vector(SvgHandle::from_path(p)))
+                            } else {
+                                Some(IconHandle::Raster(ImageHandle::from_path(p)))
+                            };
+                    }
                 }
                 Task::none()
             }
@@ -427,36 +421,35 @@ impl Elbey {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lazy_static::lazy_static;
 
     static EMPTY_LOADER: fn() -> Vec<AppDescriptor> = || vec![];
 
-    lazy_static! {
-        static ref TEST_DESKTOP_ENTRY_1: AppDescriptor = AppDescriptor {
-            appid: "test_app_id_1".to_string(),
-            title: "t1".to_string(),
-            exec: "".to_string(),
-            exec_count: 0,
-            icon_name: None,
-            icon_handle: None,
-        };
-        static ref TEST_DESKTOP_ENTRY_2: AppDescriptor = AppDescriptor {
-            appid: "test_app_id_2".to_string(),
-            title: "t2".to_string(),
-            exec: "".to_string(),
-            exec_count: 0,
-            icon_name: None,
-            icon_handle: None,
-        };
-        static ref TEST_DESKTOP_ENTRY_3: AppDescriptor = AppDescriptor {
-            appid: "test_app_id_3".to_string(),
-            title: "t2".to_string(),
-            exec: "".to_string(),
-            exec_count: 0,
-            icon_name: None,
-            icon_handle: None,
-        };
-    }
+    static TEST_DESKTOP_ENTRY_1: LazyLock<AppDescriptor> = LazyLock::new(|| AppDescriptor {
+        appid: "test_app_id_1".to_string(),
+        title: "t1".to_string(),
+        exec: "".to_string(),
+        exec_count: 0,
+        icon_name: None,
+        icon_handle: Some(FALLBACK_ICON_HANDLE.clone()),
+    });
+
+    static TEST_DESKTOP_ENTRY_2: LazyLock<AppDescriptor> = LazyLock::new(|| AppDescriptor {
+        appid: "test_app_id_2".to_string(),
+        title: "t2".to_string(),
+        exec: "".to_string(),
+        exec_count: 0,
+        icon_name: None,
+        icon_handle: Some(FALLBACK_ICON_HANDLE.clone()),
+    });
+
+    static TEST_DESKTOP_ENTRY_3: LazyLock<AppDescriptor> = LazyLock::new(|| AppDescriptor {
+        appid: "test_app_id_3".to_string(),
+        title: "t2".to_string(),
+        exec: "".to_string(),
+        exec_count: 0,
+        icon_name: None,
+        icon_handle: Some(FALLBACK_ICON_HANDLE.clone()),
+    });
 
     static TEST_ENTRY_LOADER: fn() -> Vec<AppDescriptor> = || {
         vec![
