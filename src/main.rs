@@ -2,10 +2,12 @@
 #![doc(html_logo_url = "https://github.com/kgilmer/elbey/blob/main/elbey.svg")]
 mod app;
 mod cache;
+mod values;
 
 use std::process::exit;
 use std::sync::{Arc, Mutex};
 
+use crate::values::*;
 use anyhow::Context;
 use app::{AppDescriptor, Elbey, ElbeyFlags};
 use argh::FromArgs;
@@ -21,14 +23,8 @@ use iced_layershell::Application;
 use lazy_static::lazy_static;
 
 lazy_static! {
-    static ref PROGRAM_NAME: String = String::from("Elbey");
     static ref CACHE: Arc<Mutex<Cache>> = Arc::new(Mutex::new(Cache::new(find_all_apps)));
 }
-const DEFAULT_WINDOW_HEIGHT: u32 = 320;
-const DEFAULT_WINDOW_WIDTH: u32 = 320;
-const DEFAULT_ICON_SIZE: u16 = 48;
-const DEFAULT_THEME: Theme = Theme::Nord;
-const DEFAULT_TEXT_SIZE: u16 = 16;
 
 #[derive(FromArgs)]
 /// Desktop app launcher
