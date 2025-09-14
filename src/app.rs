@@ -11,9 +11,7 @@ use iced::keyboard::Key;
 use iced::widget::button::{primary, text as text_style};
 use iced::widget::image::Handle as ImageHandle;
 use iced::widget::svg::Handle as SvgHandle;
-use iced::widget::{
-    button, column, image, row, scrollable, svg, text, text_input, Column,
-};
+use iced::widget::{button, column, image, row, scrollable, svg, text, text_input, Column};
 use iced::{event, window, Alignment, Element, Event, Length, Task, Theme};
 use iced_layershell::{to_layer_message, Application};
 use serde::{Deserialize, Serialize};
@@ -69,16 +67,6 @@ pub struct AppDescriptor {
     pub icon_name: Option<String>,
     #[serde(skip, default)]
     pub icon_handle: Option<IconHandle>,
-}
-
-impl PartialEq for AppDescriptor {
-    fn eq(&self, other: &Self) -> bool {
-        self.appid == other.appid
-            && self.title == other.title
-            && self.exec == other.exec
-            && self.exec_count == other.exec_count
-            && self.icon_name == other.icon_name
-    }
 }
 
 impl From<DesktopEntry> for AppDescriptor {
@@ -283,12 +271,11 @@ impl Application for Elbey {
             ElbeyMessage::IconLoaded(index, path) => {
                 if let Some(p) = path {
                     if let Some(app) = self.state.apps.get_mut(index) {
-                        app.icon_handle =
-                            if p.extension().and_then(|s| s.to_str()) == Some("svg") {
-                                Some(IconHandle::Vector(SvgHandle::from_path(p)))
-                            } else {
-                                Some(IconHandle::Raster(ImageHandle::from_path(p)))
-                            };
+                        app.icon_handle = if p.extension().and_then(|s| s.to_str()) == Some("svg") {
+                            Some(IconHandle::Vector(SvgHandle::from_path(p)))
+                        } else {
+                            Some(IconHandle::Raster(ImageHandle::from_path(p)))
+                        };
                     }
                 }
                 Task::none()
@@ -325,9 +312,7 @@ impl Application for Elbey {
                 dbg!(anchor);
                 Task::none()
             }
-            ElbeyMessage::SetInputRegion(_action_callback) => {
-                Task::none()
-            }
+            ElbeyMessage::SetInputRegion(_action_callback) => Task::none(),
             ElbeyMessage::AnchorSizeChange(anchor, _) => {
                 dbg!(anchor);
                 Task::none()
