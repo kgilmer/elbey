@@ -18,6 +18,10 @@ use serde::{Deserialize, Serialize};
 use crate::PROGRAM_NAME;
 use crate::values::*;
 
+fn default_icon_handle() -> IconHandle {
+    FALLBACK_ICON_HANDLE.clone()
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppDescriptor {
     pub appid: String,
@@ -25,8 +29,8 @@ pub struct AppDescriptor {
     pub exec: String,
     pub exec_count: usize,
     pub icon_name: Option<String>,
-    #[serde(skip, default)]
-    pub icon_handle: Option<IconHandle>,
+    #[serde(skip, default = "default_icon_handle")]
+    pub icon_handle: IconHandle,
 }
 
 impl From<DesktopEntry> for AppDescriptor {
@@ -37,7 +41,7 @@ impl From<DesktopEntry> for AppDescriptor {
             exec: value.exec().expect("has exec").to_string(),
             exec_count: 0,
             icon_name: value.icon().map(str::to_string),
-            icon_handle: Some(FALLBACK_ICON_HANDLE.clone()),
+            icon_handle: default_icon_handle(),
         }
     }
 }
@@ -151,7 +155,7 @@ impl Application for Elbey {
             .map(|(index, entry)| {
                 let name = entry.title.as_str();
                 let selected = self.state.selected_index == index;
-                let icon_handle = entry.icon_handle.as_ref().unwrap();
+                let icon_handle = &entry.icon_handle;
                 let icon: Element<'_, ElbeyMessage> = match icon_handle {
                     IconHandle::Raster(handle) => image(handle.clone())
                         .width(Length::Fixed(self.flags.icon_size.into()))
@@ -232,9 +236,9 @@ impl Application for Elbey {
                 if let Some(p) = path {
                     if let Some(app) = self.state.apps.get_mut(index) {
                         app.icon_handle = if p.extension().and_then(|s| s.to_str()) == Some("svg") {
-                            Some(IconHandle::Vector(SvgHandle::from_path(p)))
+                            IconHandle::Vector(SvgHandle::from_path(p))
                         } else {
-                            Some(IconHandle::Raster(ImageHandle::from_path(p)))
+                            IconHandle::Raster(ImageHandle::from_path(p))
                         };
                     }
                 }
@@ -362,7 +366,7 @@ mod tests {
         exec: "".to_string(),
         exec_count: 0,
         icon_name: None,
-        icon_handle: Some(FALLBACK_ICON_HANDLE.clone()),
+        icon_handle: default_icon_handle(),
     });
 
     static TEST_DESKTOP_ENTRY_2: LazyLock<AppDescriptor> = LazyLock::new(|| AppDescriptor {
@@ -371,7 +375,7 @@ mod tests {
         exec: "".to_string(),
         exec_count: 0,
         icon_name: None,
-        icon_handle: Some(FALLBACK_ICON_HANDLE.clone()),
+        icon_handle: default_icon_handle(),
     });
 
     static TEST_DESKTOP_ENTRY_3: LazyLock<AppDescriptor> = LazyLock::new(|| AppDescriptor {
@@ -380,7 +384,7 @@ mod tests {
         exec: "".to_string(),
         exec_count: 0,
         icon_name: None,
-        icon_handle: Some(FALLBACK_ICON_HANDLE.clone()),
+        icon_handle: default_icon_handle(),
     });
 
     static TEST_ENTRY_LOADER: fn() -> Vec<AppDescriptor> = || {
@@ -467,7 +471,7 @@ mod tests {
 
         assert!(matches!(
             unit.state.apps[0].icon_handle,
-            Some(IconHandle::Raster(_))
+            IconHandle::Raster(_)
         ));
     }
 
@@ -487,7 +491,7 @@ mod tests {
 
         assert!(matches!(
             unit.state.apps[0].icon_handle,
-            Some(IconHandle::Vector(_))
+            IconHandle::Vector(_)
         ));
     }
 
@@ -506,7 +510,7 @@ mod tests {
 
         assert!(matches!(
             unit.state.apps[0].icon_handle,
-            Some(IconHandle::Vector(_))
+            IconHandle::Vector(_)
         ));
     }
 }
