@@ -9,7 +9,11 @@ use freedesktop_icons::lookup;
 use iced::keyboard::key::Named;
 use iced::keyboard::Key;
 use iced::widget::button::{primary, text as text_style};
-use iced::widget::{button, column, image, row, scrollable, text, text_input, Column, Space};
+use iced::widget::image::Handle as ImageHandle;
+use iced::widget::svg::Handle as SvgHandle;
+use iced::widget::{
+    button, column, image, row, scrollable, svg, text, text_input, Column, Space,
+};
 use iced::{event, window, Alignment, Element, Event, Length, Task, Theme};
 use iced_layershell::{to_layer_message, Application};
 use serde::{Deserialize, Serialize};
@@ -18,13 +22,39 @@ use crate::PROGRAM_NAME;
 
 static ENTRY_WIDGET_ID: LazyLock<iced::widget::text_input::Id> =
     std::sync::LazyLock::new(|| iced::widget::text_input::Id::new("entry"));
+
+// An SVG icon used as a fallback, from https://en.m.wikipedia.org/wiki/File:Application-x-executable.svg
+static FALLBACK_ICON_DATA: &str = r##"<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="48" height="48" version="1.1">
+    <defs>
+        <linearGradient id="a">
+            <stop offset="0" stop-color="#fff"/>
+            <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="b" x1="24" x2="24" y1="4" y2="44" gradientUnits="userSpaceOnUse" xlink:href="#a"/>
+        <linearGradient id="c" x1="24" x2="24" y1="4" y2="44" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#73d216"/>
+            <stop offset="1" stop-color="#4e9a06"/>
+        </linearGradient>
+    </defs>
+    <path d="M 4,24 C 4,4 4,4 24,4 c 20,0 20,0 20,20 0,20 0,20 -20,20 C 4,44 4,44 4,24 z" fill="url(#c)"/>
+    <path d="M 4,24 C 4,4 4,4 24,4 c 20,0 20,0 20,20 0,20 0,20 -20,20 C 4,44 4,44 4,24 z" fill="url(#b)" fill-opacity=".2"/>
+    <path d="m 14,15 2,8 7,-4 z m 13,0 7,4 -9,4 z m -13,9 9,4 7,-4 -2,-8 z" fill="#fff" fill-rule="evenodd"/>
+</svg>"##;
+
 static ITEMS_WIDGET_ID: LazyLock<iced::widget::scrollable::Id> =
     std::sync::LazyLock::new(|| iced::widget::scrollable::Id::new("items"));
 
 // The max number of items to render in the list
 const VIEWABLE_LIST_ITEM_COUNT: usize = 10;
 
-#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone)]
+pub enum IconHandle {
+    Raster(ImageHandle),
+    Vector(SvgHandle),
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppDescriptor {
     pub appid: String,
     pub title: String,
@@ -32,7 +62,18 @@ pub struct AppDescriptor {
     pub exec_count: usize,
     pub icon_name: Option<String>,
     #[serde(skip, default)]
-    pub icon_handle: Option<image::Handle>,
+    pub icon_handle: Option<IconHandle>,
+}
+
+impl PartialEq for AppDescriptor {
+    fn eq(&self, other: &Self) -> bool {
+        self.appid == other.appid
+            && self.title == other.title
+            && self.exec == other.exec
+            && self.exec_count == other.exec_count
+            && self.icon_name == other.icon_name
+        // NOTE: icon_handle is not compared because the underlying types don't implement PartialEq.
+    }
 }
 
 impl From<&DesktopEntry> for AppDescriptor {
@@ -169,12 +210,17 @@ impl Application for Elbey {
                 let name = entry.title.as_str();
                 let selected = self.state.selected_index == index;
                 let content = if let Some(icon_handle) = &entry.icon_handle {
-                    let icon = image(icon_handle.clone())
-                        .width(Length::Fixed(48.0))
-                        .height(Length::Fixed(48.0));
-                    row![icon, text(name)]
-                        .spacing(10)
-                        .align_y(Alignment::Center)
+                    let icon: Element<'_, ElbeyMessage> = match icon_handle {
+                        IconHandle::Raster(handle) => image(handle.clone())
+                            .width(Length::Fixed(48.0))
+                            .height(Length::Fixed(48.0))
+                            .into(),
+                        IconHandle::Vector(handle) => svg(handle.clone())
+                            .width(Length::Fixed(48.0))
+                            .height(Length::Fixed(48.0))
+                            .into(),
+                    };
+                    row![icon, text(name)].spacing(10).align_y(Alignment::Center)
                 } else {
                     row![
                         Space::with_width(Length::Fixed(48.0)),
@@ -217,14 +263,19 @@ impl Application for Elbey {
                     .apps
                     .iter()
                     .enumerate()
-                    .filter_map(|(i, app)| {
-                        app.icon_name.as_ref().map(|name| {
-                            let icon_name = name.clone();
-                            Task::perform(
-                                async move { lookup(&icon_name).with_size(48).find() },
-                                move |path| ElbeyMessage::IconLoaded(i, path),
-                            )
-                        })
+                    .map(|(i, app)| {
+                        let icon_name = app.icon_name.clone();
+                        Task::perform(
+                            async move {
+                                icon_name
+                                    .as_deref()
+                                    .and_then(|name| lookup(name).with_size(48).find())
+                                    .or_else(|| {
+                                        lookup("application-x-executable").with_size(48).find()
+                                    })
+                            },
+                            move |path| ElbeyMessage::IconLoaded(i, path),
+                        )
                     })
                     .collect();
                 tasks.push(text_input::focus(ENTRY_WIDGET_ID.clone()));
@@ -245,7 +296,17 @@ impl Application for Elbey {
             }
             ElbeyMessage::IconLoaded(index, path) => {
                 if let Some(app) = self.state.apps.get_mut(index) {
-                    app.icon_handle = path.map(image::Handle::from_path);
+                    app.icon_handle = if let Some(p) = path {
+                        if p.extension().and_then(|s| s.to_str()) == Some("svg") {
+                            Some(IconHandle::Vector(SvgHandle::from_path(p)))
+                        } else {
+                            Some(IconHandle::Raster(ImageHandle::from_path(p)))
+                        }
+                    } else {
+                        Some(IconHandle::Vector(SvgHandle::from_memory(
+                            FALLBACK_ICON_DATA.as_bytes(),
+                        )))
+                    };
                 }
                 Task::none()
             }
