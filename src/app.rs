@@ -81,19 +81,6 @@ impl PartialEq for AppDescriptor {
     }
 }
 
-impl From<&DesktopEntry> for AppDescriptor {
-    fn from(value: &DesktopEntry) -> Self {
-        AppDescriptor {
-            appid: value.appid.clone(),
-            title: value.desktop_entry("Name").expect("get name").to_string(),
-            exec: value.exec().expect("has exec").to_string(),
-            exec_count: 0,
-            icon_name: value.icon().map(str::to_string),
-            icon_handle: Some(FALLBACK_ICON_HANDLE.clone()),
-        }
-    }
-}
-
 impl From<DesktopEntry> for AppDescriptor {
     fn from(value: DesktopEntry) -> Self {
         AppDescriptor {
