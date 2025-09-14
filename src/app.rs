@@ -30,35 +30,33 @@ pub struct AppDescriptor {
     pub title: String,
     pub exec: String,
     pub exec_count: usize,
-    pub icon_path: Option<PathBuf>,
+    pub icon_name: Option<String>,
+    #[serde(skip, default)]
+    pub icon_handle: Option<image::Handle>,
 }
 
 impl From<&DesktopEntry> for AppDescriptor {
     fn from(value: &DesktopEntry) -> Self {
-        let icon_path = value
-            .icon()
-            .and_then(|icon_name| lookup(icon_name).with_size(48).find());
         AppDescriptor {
             appid: value.appid.clone(),
             title: value.desktop_entry("Name").expect("get name").to_string(),
             exec: value.exec().expect("has exec").to_string(),
             exec_count: 0,
-            icon_path,
+            icon_name: value.icon().map(str::to_string),
+            icon_handle: None,
         }
     }
 }
 
 impl From<DesktopEntry> for AppDescriptor {
     fn from(value: DesktopEntry) -> Self {
-        let icon_path = value
-            .icon()
-            .and_then(|icon_name| lookup(icon_name).with_size(48).find());
         AppDescriptor {
             appid: value.appid.clone(),
             title: value.desktop_entry("Name").expect("get name").to_string(),
             exec: value.exec().expect("has exec").to_string(),
             exec_count: 0,
-            icon_path,
+            icon_name: value.icon().map(str::to_string),
+            icon_handle: None,
         }
     }
 }
@@ -89,6 +87,8 @@ pub struct Elbey {
 pub enum ElbeyMessage {
     /// Signals that the `DesktopEntries` have been fully loaded into the vec
     ModelLoaded(Vec<AppDescriptor>),
+    /// Signals that an icon path has been found for an app
+    IconLoaded(usize, Option<PathBuf>),
     /// Signals that the primary text edit box on the UI has been changed by the user, including the new text.
     EntryUpdate(String),
     /// Signals that the user has taken primary action on a selection.  In the case of a desktop app launcher, the app is launched.
@@ -168,8 +168,8 @@ impl Application for Elbey {
             .map(|(index, entry)| {
                 let name = entry.title.as_str();
                 let selected = self.state.selected_index == index;
-                let content = if let Some(icon_path) = &entry.icon_path {
-                    let icon = image(image::Handle::from_path(icon_path.clone()))
+                let content = if let Some(icon_handle) = &entry.icon_handle {
+                    let icon = image(icon_handle.clone())
                         .width(Length::Fixed(48.0))
                         .height(Length::Fixed(48.0));
                     row![icon, text(name)]
@@ -212,7 +212,23 @@ impl Application for Elbey {
             // The model has been loaded, initialize the UI
             ElbeyMessage::ModelLoaded(items) => {
                 self.state.apps = items;
-                text_input::focus(ENTRY_WIDGET_ID.clone())
+                let mut tasks: Vec<Task<ElbeyMessage>> = self
+                    .state
+                    .apps
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, app)| {
+                        app.icon_name.as_ref().map(|name| {
+                            let icon_name = name.clone();
+                            Task::perform(
+                                async move { lookup(&icon_name).with_size(48).find() },
+                                move |path| ElbeyMessage::IconLoaded(i, path),
+                            )
+                        })
+                    })
+                    .collect();
+                tasks.push(text_input::focus(ENTRY_WIDGET_ID.clone()));
+                Task::batch(tasks)
             }
             // Rebuild the select list based on the updated text entry
             ElbeyMessage::EntryUpdate(entry_text) => {
@@ -224,6 +240,12 @@ impl Application for Elbey {
             ElbeyMessage::ExecuteSelected() => {
                 if let Some(entry) = self.selected_entry() {
                     (self.flags.app_launcher)(entry).expect("Failed to launch app");
+                }
+                Task::none()
+            }
+            ElbeyMessage::IconLoaded(index, path) => {
+                if let Some(app) = self.state.apps.get_mut(index) {
+                    app.icon_handle = path.map(image::Handle::from_path);
                 }
                 Task::none()
             }
@@ -352,21 +374,24 @@ mod tests {
             title: "t1".to_string(),
             exec: "".to_string(),
             exec_count: 0,
-            icon_path: None
+            icon_name: None,
+            icon_handle: None,
         };
         static ref TEST_DESKTOP_ENTRY_2: AppDescriptor = AppDescriptor {
             appid: "test_app_id_2".to_string(),
             title: "t2".to_string(),
             exec: "".to_string(),
             exec_count: 0,
-            icon_path: None
+            icon_name: None,
+            icon_handle: None,
         };
         static ref TEST_DESKTOP_ENTRY_3: AppDescriptor = AppDescriptor {
             appid: "test_app_id_3".to_string(),
             title: "t2".to_string(),
             exec: "".to_string(),
             exec_count: 0,
-            icon_path: None
+            icon_name: None,
+            icon_handle: None,
         };
     }
 
