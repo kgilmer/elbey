@@ -24,6 +24,11 @@ lazy_static! {
     static ref PROGRAM_NAME: String = String::from("Elbey");
     static ref CACHE: Arc<Mutex<Cache>> = Arc::new(Mutex::new(Cache::new(find_all_apps)));
 }
+const DEFAULT_WINDOW_HEIGHT: u32 = 320;
+const DEFAULT_WINDOW_WIDTH: u32 = 320;
+const DEFAULT_ICON_SIZE: u16 = 48;
+const DEFAULT_THEME: Theme = Theme::Nord;
+const DEFAULT_TEXT_SIZE: u16 = 16;
 
 #[derive(FromArgs)]
 /// Desktop app launcher
@@ -43,6 +48,14 @@ struct EbleyArgs {
     /// font size
     #[argh(option)]
     font_size: Option<u16>,
+
+    /// icon size
+    #[argh(option)]
+    icon_size: Option<u16>,
+
+    /// stylesheet (unsupported)
+    #[argh(option, short='t')]
+    _style_sheet: Option<String>,
 }
 
 fn parse_theme(name: &str) -> Option<Theme> {
@@ -87,8 +100,8 @@ fn main() -> Result<(), iced_layershell::Error> {
 
     let iced_settings = Settings {
         layer_settings: LayerShellSettings {
-            size: Some((args.width.unwrap_or(320), args.height.unwrap_or(200))),
-            exclusive_zone: 200,
+            size: Some((args.width.unwrap_or(DEFAULT_WINDOW_WIDTH), args.height.unwrap_or(DEFAULT_WINDOW_HEIGHT))),
+            exclusive_zone: DEFAULT_WINDOW_HEIGHT as i32,
             anchor: Anchor::all(),
             start_mode: StartMode::Active,
             layer: Layer::Overlay,
@@ -103,20 +116,21 @@ fn main() -> Result<(), iced_layershell::Error> {
                 if let Some(theme) = parse_theme(&args.theme.unwrap()) {
                     theme
                 } else {
-                    Theme::Nord
+                    DEFAULT_THEME
                 }
             } else {
-                Theme::Nord
+                DEFAULT_THEME
             },
-            size: (
-                args.width.unwrap_or(320).try_into().unwrap(),
-                args.height.unwrap_or(200).try_into().unwrap(),
+            window_size: (
+                args.width.unwrap_or(DEFAULT_WINDOW_WIDTH).try_into().unwrap(),
+                args.height.unwrap_or(DEFAULT_WINDOW_HEIGHT).try_into().unwrap(),
             ),
+            icon_size: args.icon_size.unwrap_or(DEFAULT_ICON_SIZE),
         },
         id: Some(PROGRAM_NAME.to_string()),
         fonts: vec![],
         default_font: Font::DEFAULT,
-        default_text_size: Pixels::from(args.font_size.unwrap_or(18)),
+        default_text_size: Pixels::from(args.font_size.unwrap_or(DEFAULT_TEXT_SIZE)),
         antialiasing: true,
         virtual_keyboard_support: None,
     };

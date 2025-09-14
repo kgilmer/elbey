@@ -75,7 +75,6 @@ impl PartialEq for AppDescriptor {
             && self.exec == other.exec
             && self.exec_count == other.exec_count
             && self.icon_name == other.icon_name
-        // NOTE: icon_handle is not compared because the underlying types don't implement PartialEq.
     }
 }
 
@@ -159,7 +158,9 @@ pub struct ElbeyFlags {
 
     pub theme: Theme,
 
-    pub size: (u16, u16),
+    pub window_size: (u16, u16),
+
+    pub icon_size: u16,
 }
 
 impl Application for Elbey {
@@ -215,18 +216,18 @@ impl Application for Elbey {
                 let content = if let Some(icon_handle) = &entry.icon_handle {
                     let icon: Element<'_, ElbeyMessage> = match icon_handle {
                         IconHandle::Raster(handle) => image(handle.clone())
-                            .width(Length::Fixed(48.0))
-                            .height(Length::Fixed(48.0))
+                            .width(Length::Fixed(self.flags.icon_size.into()))
+                            .height(Length::Fixed(self.flags.icon_size.into()))
                             .into(),
                         IconHandle::Vector(handle) => svg(handle.clone())
-                            .width(Length::Fixed(48.0))
-                            .height(Length::Fixed(48.0))
+                            .width(Length::Fixed(self.flags.icon_size.into()))
+                            .height(Length::Fixed(self.flags.icon_size.into()))
                             .into(),
                     };
                     row![icon, text(name)].spacing(10).align_y(Alignment::Center)
                 } else {
                     row![
-                        Space::with_width(Length::Fixed(48.0)),
+                        Space::with_width(Length::Fixed(self.flags.icon_size.into())),
                         text(name)
                     ]
                     .spacing(10)
@@ -247,9 +248,9 @@ impl Application for Elbey {
             text_input("drun", &self.state.entry)
                 .id(ENTRY_WIDGET_ID.clone())
                 .on_input(ElbeyMessage::EntryUpdate)
-                .width(self.flags.size.0),
+                .width(self.flags.window_size.0),
             scrollable(Column::with_children(app_elements))
-                .width(self.flags.size.0)
+                .width(self.flags.window_size.0)
                 .id(ITEMS_WIDGET_ID.clone()),
         ]
         .into()
@@ -261,6 +262,7 @@ impl Application for Elbey {
             // The model has been loaded, initialize the UI
             ElbeyMessage::ModelLoaded(items) => {
                 self.state.apps = items;
+                let icon_size = self.flags.icon_size;
                 let mut tasks: Vec<Task<ElbeyMessage>> = self
                     .state
                     .apps
@@ -272,7 +274,7 @@ impl Application for Elbey {
                             async move {
                                 icon_name
                                     .as_deref()
-                                    .and_then(|name| lookup(name).with_size(48).find())
+                                    .and_then(|name| lookup(name).with_size(icon_size).find())
                             },
                             move |path| ElbeyMessage::IconLoaded(i, path),
                         )
@@ -475,7 +477,8 @@ mod tests {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: test_launcher,
             theme: Theme::default(),
-            size: (0, 0),
+            window_size: (0, 0),
+            icon_size: 48,
         });
 
         let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER()));
@@ -493,7 +496,8 @@ mod tests {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: test_launcher,
             theme: Theme::default(),
-            size: (0, 0),
+            window_size: (0, 0),
+            icon_size: 48,
         });
 
         let _ = unit.update(ElbeyMessage::ModelLoaded(EMPTY_LOADER()));
@@ -511,7 +515,8 @@ mod tests {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: test_launcher,
             theme: Theme::default(),
-            size: (0, 0),
+            window_size: (0, 0),
+            icon_size: 48,
         });
 
         let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER()));
@@ -527,7 +532,8 @@ mod tests {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: |_| Ok(()),
             theme: Theme::default(),
-            size: (0, 0),
+            window_size: (0, 0),
+            icon_size: 48,
         });
         let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER()));
 
@@ -546,7 +552,8 @@ mod tests {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: |_| Ok(()),
             theme: Theme::default(),
-            size: (0, 0),
+            window_size: (0, 0),
+            icon_size: 48,
         });
         let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER()));
 
@@ -565,7 +572,8 @@ mod tests {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: |_| Ok(()),
             theme: Theme::default(),
-            size: (0, 0),
+            window_size: (0, 0),
+            icon_size: 48,
         });
         let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER()));
 
