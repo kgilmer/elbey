@@ -1,14 +1,16 @@
 //! Functions and other types for `iced` UI to view, filter, and launch apps
 use std::cmp::{max, min};
+use std::path::PathBuf;
 use std::process::exit;
 use std::sync::LazyLock;
 
 use freedesktop_desktop_entry::DesktopEntry;
+use freedesktop_icons::lookup;
 use iced::keyboard::key::Named;
 use iced::keyboard::Key;
-use iced::widget::button::{primary, text};
-use iced::widget::{button, column, scrollable, text_input, Column};
-use iced::{event, window, Element, Event, Length, Task, Theme};
+use iced::widget::button::{primary, text as text_style};
+use iced::widget::{button, column, image, row, scrollable, text, text_input, Column, Space};
+use iced::{event, window, Alignment, Element, Event, Length, Task, Theme};
 use iced_layershell::{to_layer_message, Application};
 use serde::{Deserialize, Serialize};
 
@@ -28,26 +30,35 @@ pub struct AppDescriptor {
     pub title: String,
     pub exec: String,
     pub exec_count: usize,
+    pub icon_path: Option<PathBuf>,
 }
 
 impl From<&DesktopEntry> for AppDescriptor {
     fn from(value: &DesktopEntry) -> Self {
+        let icon_path = value
+            .icon()
+            .and_then(|icon_name| lookup(icon_name).with_size(48).find());
         AppDescriptor {
             appid: value.appid.clone(),
             title: value.desktop_entry("Name").expect("get name").to_string(),
             exec: value.exec().expect("has exec").to_string(),
             exec_count: 0,
+            icon_path,
         }
     }
 }
 
 impl From<DesktopEntry> for AppDescriptor {
     fn from(value: DesktopEntry) -> Self {
+        let icon_path = value
+            .icon()
+            .and_then(|icon_name| lookup(icon_name).with_size(48).find());
         AppDescriptor {
             appid: value.appid.clone(),
             title: value.desktop_entry("Name").expect("get name").to_string(),
             exec: value.exec().expect("has exec").to_string(),
             exec_count: 0,
+            icon_path,
         }
     }
 }
@@ -157,14 +168,24 @@ impl Application for Elbey {
             .map(|(index, entry)| {
                 let name = entry.title.as_str();
                 let selected = self.state.selected_index == index;
-                button(name)
-                    .style(move |theme, status| {
-                        if selected {
-                            primary(theme, status)
-                        } else {
-                            text(theme, status)
-                        }
-                    })
+                let content = if let Some(icon_path) = &entry.icon_path {
+                    let icon = image(image::Handle::from_path(icon_path.clone()))
+                        .width(Length::Fixed(48.0))
+                        .height(Length::Fixed(48.0));
+                    row![icon, text(name)]
+                        .spacing(10)
+                        .align_y(Alignment::Center)
+                } else {
+                    row![
+                        Space::with_width(Length::Fixed(48.0)),
+                        text(name)
+                    ]
+                    .spacing(10)
+                    .align_y(Alignment::Center)
+                };
+
+                button(content)
+                    .style(if selected { primary } else { text_style })
                     .width(Length::Fill)
                     .on_press(ElbeyMessage::ExecuteSelected())
                     .into()
@@ -238,8 +259,7 @@ impl Application for Elbey {
                 dbg!(anchor);
                 Task::none()
             }
-            ElbeyMessage::SetInputRegion(action_callback) => {
-                dbg!(action_callback);
+            ElbeyMessage::SetInputRegion(_action_callback) => {
                 Task::none()
             }
             ElbeyMessage::AnchorSizeChange(anchor, _) => {
@@ -331,19 +351,22 @@ mod tests {
             appid: "test_app_id_1".to_string(),
             title: "t1".to_string(),
             exec: "".to_string(),
-            exec_count: 0
+            exec_count: 0,
+            icon_path: None
         };
         static ref TEST_DESKTOP_ENTRY_2: AppDescriptor = AppDescriptor {
             appid: "test_app_id_2".to_string(),
             title: "t2".to_string(),
             exec: "".to_string(),
-            exec_count: 0
+            exec_count: 0,
+            icon_path: None
         };
         static ref TEST_DESKTOP_ENTRY_3: AppDescriptor = AppDescriptor {
             appid: "test_app_id_3".to_string(),
             title: "t2".to_string(),
             exec: "".to_string(),
-            exec_count: 0
+            exec_count: 0,
+            icon_path: None
         };
     }
 
