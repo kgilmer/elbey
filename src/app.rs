@@ -155,16 +155,20 @@ impl Application for Elbey {
             .map(|(index, entry)| {
                 let name = entry.title.as_str();
                 let selected = self.state.selected_index == index;
-                let icon_handle = &entry.icon_handle;
-                let icon: Element<'_, ElbeyMessage> = match icon_handle {
-                    IconHandle::Raster(handle) => image(handle.clone())
+                let icon_handle_to_render = match &entry.icon_handle {
+                    IconHandle::Loading => default_icon_handle(),
+                    other => other.clone(),
+                };
+                let icon: Element<'_, ElbeyMessage> = match icon_handle_to_render {
+                    IconHandle::Raster(handle) => image(handle)
                         .width(Length::Fixed(self.flags.icon_size.into()))
                         .height(Length::Fixed(self.flags.icon_size.into()))
                         .into(),
-                    IconHandle::Vector(handle) => svg(handle.clone())
+                    IconHandle::Vector(handle) => svg(handle)
                         .width(Length::Fixed(self.flags.icon_size.into()))
                         .height(Length::Fixed(self.flags.icon_size.into()))
                         .into(),
+                    IconHandle::Loading => unreachable!(),
                 };
                 let content = row![icon, text(name)]
                     .spacing(10)
@@ -198,32 +202,15 @@ impl Application for Elbey {
             // The model has been loaded, initialize the UI
             ElbeyMessage::ModelLoaded(items) => {
                 self.state.apps = items;
-                let icon_size = self.flags.icon_size;
-                let mut tasks: Vec<Task<ElbeyMessage>> = self
-                    .state
-                    .apps
-                    .iter()
-                    .enumerate()
-                    .map(|(i, app)| {
-                        let icon_name = app.icon_name.clone();
-                        Task::perform(
-                            async move {
-                                icon_name
-                                    .as_deref()
-                                    .and_then(|name| lookup(name).with_size(icon_size).find())
-                            },
-                            move |path| ElbeyMessage::IconLoaded(i, path),
-                        )
-                    })
-                    .collect();
-                tasks.push(text_input::focus(ENTRY_WIDGET_ID.clone()));
-                Task::batch(tasks)
+                let focus_task = text_input::focus(ENTRY_WIDGET_ID.clone());
+                let load_icons_task = self.load_visible_icons();
+                Task::batch(vec![focus_task, load_icons_task])
             }
             // Rebuild the select list based on the updated text entry
             ElbeyMessage::EntryUpdate(entry_text) => {
                 self.state.entry = entry_text;
                 self.state.selected_index = 0;
-                Task::none()
+                self.load_visible_icons()
             }
             // Launch an application selected by the user
             ElbeyMessage::ExecuteSelected() => {
@@ -233,13 +220,16 @@ impl Application for Elbey {
                 Task::none()
             }
             ElbeyMessage::IconLoaded(index, path) => {
-                if let Some(p) = path {
-                    if let Some(app) = self.state.apps.get_mut(index) {
+                if let Some(app) = self.state.apps.get_mut(index) {
+                    if let Some(p) = path {
                         app.icon_handle = if p.extension().and_then(|s| s.to_str()) == Some("svg") {
                             IconHandle::Vector(SvgHandle::from_path(p))
                         } else {
                             IconHandle::Raster(ImageHandle::from_path(p))
                         };
+                    } else {
+                        app.icon_handle = default_icon_handle();
+                        app.icon_name = None;
                     }
                 }
                 Task::none()
@@ -247,12 +237,22 @@ impl Application for Elbey {
             // Handle keyboard entries
             ElbeyMessage::KeyEvent(key) => match key {
                 Key::Named(Named::Escape) => exit(0),
-                Key::Named(Named::ArrowUp) => self.navigate_items(-1),
-                Key::Named(Named::ArrowDown) => self.navigate_items(1),
-                Key::Named(Named::PageUp) => {
-                    self.navigate_items(-(VIEWABLE_LIST_ITEM_COUNT as i32))
+                Key::Named(Named::ArrowUp) => {
+                    self.navigate_items(-1);
+                    self.load_visible_icons()
                 }
-                Key::Named(Named::PageDown) => self.navigate_items(VIEWABLE_LIST_ITEM_COUNT as i32),
+                Key::Named(Named::ArrowDown) => {
+                    self.navigate_items(1);
+                    self.load_visible_icons()
+                }
+                Key::Named(Named::PageUp) => {
+                    self.navigate_items(-(VIEWABLE_LIST_ITEM_COUNT as i32));
+                    self.load_visible_icons()
+                }
+                Key::Named(Named::PageDown) => {
+                    self.navigate_items(VIEWABLE_LIST_ITEM_COUNT as i32);
+                    self.load_visible_icons()
+                }
                 Key::Named(Named::Enter) => {
                     if let Some(entry) = self.selected_entry() {
                         (self.flags.app_launcher)(entry).expect("Failed to launch app");
@@ -333,7 +333,7 @@ impl Elbey {
             .nth(self.state.selected_index)
     }
 
-    fn navigate_items(&mut self, delta: i32) -> iced::Task<ElbeyMessage> {
+    fn navigate_items(&mut self, delta: i32) {
         if delta < 0 {
             self.state.selected_index = max(0, self.state.selected_index as i32 + delta) as usize;
         } else {
@@ -342,7 +342,6 @@ impl Elbey {
                 self.state.selected_index as i32 + delta,
             ) as usize;
         }
-        Task::none()
     }
 
     // Compute the items in the list to display based on the model
@@ -351,6 +350,41 @@ impl Elbey {
             .title
             .to_lowercase()
             .contains(&model.entry.to_lowercase())
+    }
+
+    fn load_visible_icons(&mut self) -> Task<ElbeyMessage> {
+        let filtered_app_indices: Vec<usize> = self
+            .state
+            .apps
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| Self::text_entry_filter(e, &self.state))
+            .map(|(i, _)| i)
+            .collect();
+
+        let view_start = self.state.selected_index;
+        let view_end =
+            (self.state.selected_index + VIEWABLE_LIST_ITEM_COUNT).min(filtered_app_indices.len());
+
+        let icon_size = self.flags.icon_size;
+
+        let mut tasks = vec![];
+
+        if let Some(visible_indices) = filtered_app_indices.get(view_start..view_end) {
+            for &original_index in visible_indices {
+                let app = &mut self.state.apps[original_index];
+                if app.icon_name.is_some() && app.icon_handle == default_icon_handle() {
+                    if let Some(icon_name) = app.icon_name.clone() {
+                        app.icon_handle = IconHandle::Loading;
+                        tasks.push(Task::perform(
+                            async move { lookup(&icon_name).with_size(icon_size).find() },
+                            move |path| ElbeyMessage::IconLoaded(original_index, path),
+                        ));
+                    }
+                }
+            }
+        }
+        Task::batch(tasks)
     }
 }
 
