@@ -16,8 +16,8 @@ use iced::{event, window, Alignment, Element, Event, Length, Task, Theme};
 use iced_layershell::{to_layer_message, Application};
 use serde::{Deserialize, Serialize};
 
-use crate::PROGRAM_NAME;
 use crate::values::*;
+use crate::PROGRAM_NAME;
 
 fn default_icon_handle() -> IconHandle {
     FALLBACK_ICON_HANDLE.clone()
@@ -132,8 +132,7 @@ impl Application for Elbey {
     fn new(flags: ElbeyFlags) -> (Self, Task<ElbeyMessage>) {
         // A task to load the app model
         let apps_loader = flags.apps_loader;
-        let load_task =
-            Task::perform(async move { (apps_loader)() }, ElbeyMessage::ModelLoaded);
+        let load_task = Task::perform(async move { (apps_loader)() }, ElbeyMessage::ModelLoaded);
 
         (
             Self {
@@ -240,12 +239,11 @@ impl Application for Elbey {
             ElbeyMessage::IconLoaded(index, path) => {
                 if let Some(app) = self.state.apps.get_mut(index) {
                     if let Some(p) = path {
-                        let handle =
-                            if p.extension().and_then(|s| s.to_str()) == Some("svg") {
-                                IconHandle::Vector(SvgHandle::from_path(p))
-                            } else {
-                                IconHandle::Raster(ImageHandle::from_path(p))
-                            };
+                        let handle = if p.extension().and_then(|s| s.to_str()) == Some("svg") {
+                            IconHandle::Vector(SvgHandle::from_path(p))
+                        } else {
+                            IconHandle::Raster(ImageHandle::from_path(p))
+                        };
                         if let Some(icon_name) = app.icon_name.clone() {
                             self.state.icon_cache.insert(icon_name, handle.clone());
                         }
@@ -426,8 +424,7 @@ impl Elbey {
             }
         }
 
-        let prefetch_end =
-            (view_end + PREFETCH_ICON_COUNT).min(filtered_app_indices.len());
+        let prefetch_end = (view_end + PREFETCH_ICON_COUNT).min(filtered_app_indices.len());
         if let Some(prefetch_indices) = filtered_app_indices.get(view_end..prefetch_end) {
             for &original_index in prefetch_indices {
                 self.queue_icon_load(original_index, icon_size, &mut tasks);
