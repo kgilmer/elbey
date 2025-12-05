@@ -47,8 +47,10 @@ pub static ITEMS_WIDGET_ID: LazyLock<scrollable::Id> =
 // The max number of items to render in the list
 pub const VIEWABLE_LIST_ITEM_COUNT: usize = 10;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum IconHandle {
     Raster(ImageHandle),
     Vector(SvgHandle),
+    /// Represents an icon that is currently being loaded.
+    Loading,
 }

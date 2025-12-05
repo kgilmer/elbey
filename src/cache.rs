@@ -31,7 +31,10 @@ impl Cache {
         for item in iter {
             let (_, desc_ivec) = item.ok()?;
 
-            let app_descriptor: AppDescriptor = bincode::deserialize(&desc_ivec[..]).ok()?;
+            let mut app_descriptor: AppDescriptor = bincode::deserialize(&desc_ivec[..]).ok()?;
+            if app_descriptor.lower_title.is_empty() {
+                app_descriptor.lower_title = app_descriptor.title.to_lowercase();
+            }
 
             app_descriptors.push(app_descriptor);
         }
