@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 
 use iced::widget::image::Handle as ImageHandle;
 use iced::widget::svg::Handle as SvgHandle;
-use iced::widget::{scrollable, text_input};
+use iced::widget::Id;
 use iced::Theme;
 
 pub static PROGRAM_NAME: LazyLock<String> = LazyLock::new(|| String::from("Elbey"));
@@ -13,8 +13,7 @@ pub const DEFAULT_ICON_SIZE: u16 = 48;
 pub const DEFAULT_THEME: Theme = Theme::Nord;
 pub const DEFAULT_TEXT_SIZE: u16 = 16;
 
-pub static ENTRY_WIDGET_ID: LazyLock<text_input::Id> =
-    LazyLock::new(|| text_input::Id::new("entry"));
+pub static ENTRY_WIDGET_ID: LazyLock<Id> = LazyLock::new(|| Id::new("entry"));
 
 // An SVG icon used as a fallback, from https://en.m.wikipedia.org/wiki/File:Application-x-executable.svg
 static FALLBACK_ICON_DATA: &[u8] = r##"<?xml version="1.0" encoding="UTF-8" standalone="no"?>
@@ -41,8 +40,7 @@ static FALLBACK_ICON_DATA: &[u8] = r##"<?xml version="1.0" encoding="UTF-8" stan
 pub static FALLBACK_ICON_HANDLE: LazyLock<IconHandle> =
     LazyLock::new(|| IconHandle::Vector(SvgHandle::from_memory(FALLBACK_ICON_DATA)));
 
-pub static ITEMS_WIDGET_ID: LazyLock<scrollable::Id> =
-    LazyLock::new(|| scrollable::Id::new("items"));
+pub static ITEMS_WIDGET_ID: LazyLock<Id> = LazyLock::new(|| Id::new("items"));
 
 // The max number of items to render in the list
 pub const VIEWABLE_LIST_ITEM_COUNT: usize = 10;

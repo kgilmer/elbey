@@ -10,10 +10,11 @@ use iced::keyboard::key::Named;
 use iced::keyboard::Key;
 use iced::widget::button::{primary, text as text_style};
 use iced::widget::image::Handle as ImageHandle;
+use iced::widget::operation::focus;
 use iced::widget::svg::Handle as SvgHandle;
 use iced::widget::{button, column, image, row, scrollable, svg, text, text_input, Column};
 use iced::{event, window, Alignment, Element, Event, Length, Task, Theme};
-use iced_layershell::{to_layer_message, Application};
+use iced_layershell::to_layer_message;
 use serde::{Deserialize, Serialize};
 
 use crate::values::*;
@@ -119,17 +120,12 @@ pub struct ElbeyFlags {
     pub icon_size: u16,
 }
 
-impl Application for Elbey {
-    type Message = ElbeyMessage;
-    type Flags = ElbeyFlags;
-    type Theme = Theme;
-    type Executor = iced::executor::Default;
-
+impl Elbey {
     /// Initialize the app.  Only notable item here is probably the return type Task<ElbeyMessage> and what we pass
     /// back.  Here, within the async execution, we directly call the library to retrieve `DesktopEntry`'s which
     /// are the primary model of the [XDG Desktop Specification](https://www.freedesktop.org/wiki/Specifications/desktop-entry-spec/).
     /// Then we create and pass a layer shell as another task.
-    fn new(flags: ElbeyFlags) -> (Self, Task<ElbeyMessage>) {
+    pub fn new(flags: ElbeyFlags) -> (Self, Task<ElbeyMessage>) {
         // A task to load the app model
         let apps_loader = flags.apps_loader;
         let load_task = Task::perform(async move { (apps_loader)() }, ElbeyMessage::ModelLoaded);
@@ -150,12 +146,12 @@ impl Application for Elbey {
         )
     }
 
-    fn namespace(&self) -> String {
+    pub fn namespace() -> String {
         PROGRAM_NAME.to_string()
     }
 
     /// Entry-point from `iced`` into app to construct UI
-    fn view(&self) -> Element<'_, ElbeyMessage> {
+    pub fn view(&self) -> Element<'_, ElbeyMessage> {
         // Create the list UI elements based on the `DesktopEntry` model
         let app_elements: Vec<Element<ElbeyMessage>> = self
             .state
@@ -203,22 +199,22 @@ impl Application for Elbey {
             text_input("drun", &self.state.entry)
                 .id(ENTRY_WIDGET_ID.clone())
                 .on_input(ElbeyMessage::EntryUpdate)
-                .width(self.flags.window_size.0),
+                .width(u32::from(self.flags.window_size.0)),
             scrollable(Column::with_children(app_elements))
-                .width(self.flags.window_size.0)
+                .width(u32::from(self.flags.window_size.0))
                 .id(ITEMS_WIDGET_ID.clone()),
         ]
         .into()
     }
 
     /// Entry-point from `iced` to handle user and system events
-    fn update(&mut self, message: ElbeyMessage) -> Task<ElbeyMessage> {
+    pub fn update(&mut self, message: ElbeyMessage) -> Task<ElbeyMessage> {
         match message {
             // The model has been loaded, initialize the UI
             ElbeyMessage::ModelLoaded(items) => {
                 self.state.apps = items;
                 self.state.entry_lower = self.state.entry.to_lowercase();
-                let focus_task = text_input::focus(ENTRY_WIDGET_ID.clone());
+                let focus_task = focus(ENTRY_WIDGET_ID.clone());
                 let load_icons_task = self.load_visible_icons();
                 Task::batch(vec![focus_task, load_icons_task])
             }
@@ -289,7 +285,7 @@ impl Application for Elbey {
             // Handle window events
             ElbeyMessage::GainedFocus => {
                 self.state.received_focus = true;
-                text_input::focus(ENTRY_WIDGET_ID.clone())
+                focus(ENTRY_WIDGET_ID.clone())
             }
             ElbeyMessage::LostFocus => {
                 if self.state.received_focus {
@@ -304,6 +300,10 @@ impl Application for Elbey {
             ElbeyMessage::SetInputRegion(_action_callback) => Task::none(),
             ElbeyMessage::AnchorSizeChange(anchor, _) => {
                 dbg!(anchor);
+                Task::none()
+            }
+            ElbeyMessage::ExclusiveZoneChange(exclusive_zone) => {
+                dbg!(exclusive_zone);
                 Task::none()
             }
             ElbeyMessage::LayerChange(layer) => {
@@ -326,7 +326,7 @@ impl Application for Elbey {
     }
 
     /// The `iced` entry-point to setup event listeners
-    fn subscription(&self) -> iced::Subscription<ElbeyMessage> {
+    pub fn subscription(&self) -> iced::Subscription<ElbeyMessage> {
         // Framework code to integrate with underlying user interface devices; keyboard, mouse.
         event::listen_with(|event, _status, _| match event {
             Event::Window(window::Event::Focused) => Some(ElbeyMessage::GainedFocus),
@@ -338,12 +338,13 @@ impl Application for Elbey {
                 location: _,
                 modified_key: _,
                 physical_key: _,
+                repeat: _,
             }) => Some(ElbeyMessage::KeyEvent(key)),
             _ => None,
         })
     }
 
-    fn theme(&self) -> Self::Theme {
+    pub fn theme(&self) -> Theme {
         self.flags.theme.clone()
     }
 }
@@ -490,7 +491,7 @@ mod tests {
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: test_launcher,
-            theme: Theme::default(),
+            theme: DEFAULT_THEME,
             window_size: (0, 0),
             icon_size: 48,
         });
@@ -509,7 +510,7 @@ mod tests {
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: test_launcher,
-            theme: Theme::default(),
+            theme: DEFAULT_THEME,
             window_size: (0, 0),
             icon_size: 48,
         });
@@ -528,7 +529,7 @@ mod tests {
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: test_launcher,
-            theme: Theme::default(),
+            theme: DEFAULT_THEME,
             window_size: (0, 0),
             icon_size: 48,
         });
@@ -545,7 +546,7 @@ mod tests {
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: |_| Ok(()),
-            theme: Theme::default(),
+            theme: DEFAULT_THEME,
             window_size: (0, 0),
             icon_size: 48,
         });
@@ -565,7 +566,7 @@ mod tests {
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: |_| Ok(()),
-            theme: Theme::default(),
+            theme: DEFAULT_THEME,
             window_size: (0, 0),
             icon_size: 48,
         });
@@ -585,7 +586,7 @@ mod tests {
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: |_| Ok(()),
-            theme: Theme::default(),
+            theme: DEFAULT_THEME,
             window_size: (0, 0),
             icon_size: 48,
         });
@@ -607,7 +608,7 @@ mod tests {
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: EMPTY_LOADER,
             app_launcher: |_| Ok(()),
-            theme: Theme::default(),
+            theme: DEFAULT_THEME,
             window_size: (320, 320),
             icon_size: 48,
         });
