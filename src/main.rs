@@ -19,7 +19,7 @@ use iced::theme::{Custom, Palette};
 use iced::{Color, Font, Pixels, Theme};
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings, StartMode};
-use iced_layershell::Application;
+use iced_layershell::application;
 use lazy_static::lazy_static;
 
 lazy_static! {
@@ -79,11 +79,12 @@ fn parse_theme(name: &str) -> Option<Theme> {
         "AyuMirage" => Some(Theme::Custom(Arc::new(Custom::new(
             "AyuMirage".to_string(),
             Palette {
-                background: Color::parse("1F2430").expect("Cannot parse color"),
-                text: Color::parse("637599").expect("Cannot parse color"),
-                primary: Color::parse("171B24").expect("Cannot parse color"),
-                success: Color::parse("D5FF80").expect("Cannot parse color"),
-                danger: Color::parse("12151C").expect("Cannot parse color"),
+                background: Color::from_rgb8(0x1F, 0x24, 0x30),
+                text: Color::from_rgb8(0x63, 0x75, 0x99),
+                primary: Color::from_rgb8(0x17, 0x1B, 0x24),
+                success: Color::from_rgb8(0xD5, 0xFF, 0x80),
+                warning: Color::from_rgb8(0xFF, 0xC1, 0x4E),
+                danger: Color::from_rgb8(0x12, 0x15, 0x1C),
             },
         )))),
         _ => None,
@@ -93,6 +94,31 @@ fn parse_theme(name: &str) -> Option<Theme> {
 /// Program entrypoint.  Just configures the app, window, and kicks off the iced runtime.
 fn main() -> Result<(), iced_layershell::Error> {
     let args: EbleyArgs = argh::from_env();
+
+    let flags = ElbeyFlags {
+        apps_loader: load_apps,
+        app_launcher: launch_app,
+        theme: if args.theme.is_some() {
+            if let Some(theme) = parse_theme(&args.theme.unwrap()) {
+                theme
+            } else {
+                DEFAULT_THEME
+            }
+        } else {
+            DEFAULT_THEME
+        },
+        window_size: (
+            args.width
+                .unwrap_or(DEFAULT_WINDOW_WIDTH)
+                .try_into()
+                .unwrap(),
+            args.height
+                .unwrap_or(DEFAULT_WINDOW_HEIGHT)
+                .try_into()
+                .unwrap(),
+        ),
+        icon_size: args.icon_size.unwrap_or(DEFAULT_ICON_SIZE),
+    };
 
     let iced_settings = Settings {
         layer_settings: LayerShellSettings {
@@ -108,39 +134,26 @@ fn main() -> Result<(), iced_layershell::Error> {
             keyboard_interactivity: KeyboardInteractivity::Exclusive,
             events_transparent: false,
         },
-        flags: ElbeyFlags {
-            apps_loader: load_apps,
-            app_launcher: launch_app,
-            theme: if args.theme.is_some() {
-                if let Some(theme) = parse_theme(&args.theme.unwrap()) {
-                    theme
-                } else {
-                    DEFAULT_THEME
-                }
-            } else {
-                DEFAULT_THEME
-            },
-            window_size: (
-                args.width
-                    .unwrap_or(DEFAULT_WINDOW_WIDTH)
-                    .try_into()
-                    .unwrap(),
-                args.height
-                    .unwrap_or(DEFAULT_WINDOW_HEIGHT)
-                    .try_into()
-                    .unwrap(),
-            ),
-            icon_size: args.icon_size.unwrap_or(DEFAULT_ICON_SIZE),
-        },
         id: Some(PROGRAM_NAME.to_string()),
         fonts: vec![],
         default_font: Font::DEFAULT,
-        default_text_size: Pixels::from(args.font_size.unwrap_or(DEFAULT_TEXT_SIZE)),
+        default_text_size: Pixels::from(u32::from(args.font_size.unwrap_or(DEFAULT_TEXT_SIZE))),
         antialiasing: true,
-        virtual_keyboard_support: None,
+        ..Settings::default()
     };
 
-    Elbey::run(iced_settings)
+    let flags_for_boot = flags.clone();
+
+    application(
+        move || Elbey::new(flags_for_boot.clone()),
+        Elbey::namespace,
+        Elbey::update,
+        Elbey::view,
+    )
+    .subscription(Elbey::subscription)
+    .theme(|state: &Elbey| Some(state.theme()))
+    .settings(iced_settings)
+    .run()
 }
 
 /// Launch an app described by `entry`.  This implementation exits the process upon successful launch.
