@@ -17,9 +17,9 @@ use freedesktop_desktop_entry::{
 };
 use iced::theme::{Custom, Palette};
 use iced::{Color, Font, Pixels, Theme};
+use iced_layershell::application;
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings, StartMode};
-use iced_layershell::application;
 use lazy_static::lazy_static;
 
 lazy_static! {
