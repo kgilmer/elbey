@@ -491,7 +491,7 @@ mod tests {
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: test_launcher,
-            theme: Theme::default(),
+            theme: DEFAULT_THEME,
             window_size: (0, 0),
             icon_size: 48,
         });
@@ -510,7 +510,7 @@ mod tests {
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: test_launcher,
-            theme: Theme::default(),
+            theme: DEFAULT_THEME,
             window_size: (0, 0),
             icon_size: 48,
         });
@@ -529,7 +529,7 @@ mod tests {
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: test_launcher,
-            theme: Theme::default(),
+            theme: DEFAULT_THEME,
             window_size: (0, 0),
             icon_size: 48,
         });
@@ -546,7 +546,7 @@ mod tests {
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: |_| Ok(()),
-            theme: Theme::default(),
+            theme: DEFAULT_THEME,
             window_size: (0, 0),
             icon_size: 48,
         });
@@ -566,7 +566,7 @@ mod tests {
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: |_| Ok(()),
-            theme: Theme::default(),
+            theme: DEFAULT_THEME,
             window_size: (0, 0),
             icon_size: 48,
         });
@@ -586,7 +586,7 @@ mod tests {
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: |_| Ok(()),
-            theme: Theme::default(),
+            theme: DEFAULT_THEME,
             window_size: (0, 0),
             icon_size: 48,
         });
@@ -608,7 +608,7 @@ mod tests {
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: EMPTY_LOADER,
             app_launcher: |_| Ok(()),
-            theme: Theme::default(),
+            theme: DEFAULT_THEME,
             window_size: (320, 320),
             icon_size: 48,
         });
