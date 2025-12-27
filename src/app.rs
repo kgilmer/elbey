@@ -199,9 +199,9 @@ impl Elbey {
             text_input("drun", &self.state.entry)
                 .id(ENTRY_WIDGET_ID.clone())
                 .on_input(ElbeyMessage::EntryUpdate)
-                .width(u32::from(self.flags.window_size.0)),
+                .width(Length::Fill),
             scrollable(Column::with_children(app_elements))
-                .width(u32::from(self.flags.window_size.0))
+                .width(Length::Fill)
                 .id(ITEMS_WIDGET_ID.clone()),
         ]
         .into()
