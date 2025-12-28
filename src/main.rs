@@ -107,16 +107,6 @@ fn main() -> Result<(), iced_layershell::Error> {
         } else {
             DEFAULT_THEME
         },
-        window_size: (
-            args.width
-                .unwrap_or(DEFAULT_WINDOW_WIDTH)
-                .try_into()
-                .unwrap(),
-            args.height
-                .unwrap_or(DEFAULT_WINDOW_HEIGHT)
-                .try_into()
-                .unwrap(),
-        ),
         icon_size: args.icon_size.unwrap_or(DEFAULT_ICON_SIZE),
     };
 

@@ -117,8 +117,6 @@ pub struct ElbeyFlags {
 
     pub theme: Theme,
 
-    pub window_size: (u16, u16),
-
     pub icon_size: u16,
 }
 
@@ -219,6 +217,9 @@ impl Elbey {
             ElbeyMessage::ModelLoaded(items) => {
                 self.state.apps = items;
                 self.state.entry_lower = self.state.entry.to_lowercase();
+                self.state
+                    .icon_cache
+                    .reserve(self.state.apps.len().saturating_sub(self.state.icon_cache.len()));
                 self.refresh_filtered_indices();
                 let focus_task = focus(ENTRY_WIDGET_ID.clone());
                 let load_icons_task = self.load_visible_icons();
@@ -516,7 +517,6 @@ mod tests {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: test_launcher,
             theme: DEFAULT_THEME,
-            window_size: (0, 0),
             icon_size: 48,
         });
 
@@ -535,7 +535,6 @@ mod tests {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: test_launcher,
             theme: DEFAULT_THEME,
-            window_size: (0, 0),
             icon_size: 48,
         });
 
@@ -554,7 +553,6 @@ mod tests {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: test_launcher,
             theme: DEFAULT_THEME,
-            window_size: (0, 0),
             icon_size: 48,
         });
 
@@ -571,7 +569,6 @@ mod tests {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: |_| Ok(()),
             theme: DEFAULT_THEME,
-            window_size: (0, 0),
             icon_size: 48,
         });
         let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER()));
@@ -591,7 +588,6 @@ mod tests {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: |_| Ok(()),
             theme: DEFAULT_THEME,
-            window_size: (0, 0),
             icon_size: 48,
         });
         let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER()));
@@ -611,7 +607,6 @@ mod tests {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: |_| Ok(()),
             theme: DEFAULT_THEME,
-            window_size: (0, 0),
             icon_size: 48,
         });
         let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER()));
@@ -633,7 +628,6 @@ mod tests {
             apps_loader: EMPTY_LOADER,
             app_launcher: |_| Ok(()),
             theme: DEFAULT_THEME,
-            window_size: (320, 320),
             icon_size: 48,
         });
 
