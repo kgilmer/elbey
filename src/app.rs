@@ -63,6 +63,8 @@ pub struct State {
     entry_lower: String,
     /// The complete list of DesktopEntry, as retrieved by lib
     apps: Vec<AppDescriptor>,
+    /// Indices of apps that match the current filter, to avoid re-filtering
+    filtered_indices: Vec<usize>,
     /// The index of the item visibly selected in the UI
     selected_index: usize,
     /// A flag to indicate app window has received focus. Work around to some windowing environments passing `unfocused` unexpectedly.
@@ -115,8 +117,6 @@ pub struct ElbeyFlags {
 
     pub theme: Theme,
 
-    pub window_size: (u16, u16),
-
     pub icon_size: u16,
 }
 
@@ -136,6 +136,7 @@ impl Elbey {
                     entry: String::new(),
                     entry_lower: String::new(),
                     apps: vec![],
+                    filtered_indices: vec![],
                     selected_index: 0,
                     received_focus: false,
                     icon_cache: HashMap::new(),
@@ -155,17 +156,22 @@ impl Elbey {
         // Create the list UI elements based on the `DesktopEntry` model
         let app_elements: Vec<Element<ElbeyMessage>> = self
             .state
-            .apps
+            .filtered_indices
             .iter()
-            .filter(|e| Self::text_entry_filter(e, &self.state)) // Only show entries that match filter
             .enumerate()
-            .filter(|(index, _)| {
+            .filter_map(|(filtered_index, original_index)| {
+                self.state
+                    .apps
+                    .get(*original_index)
+                    .map(|entry| (filtered_index, entry))
+            })
+            .filter(|(filtered_index, _)| {
                 (self.state.selected_index..self.state.selected_index + VIEWABLE_LIST_ITEM_COUNT)
-                    .contains(index)
+                    .contains(filtered_index)
             }) // Only show entries in selection range
-            .map(|(index, entry)| {
+            .map(|(filtered_index, entry)| {
                 let name = entry.title.as_str();
-                let selected = self.state.selected_index == index;
+                let selected = self.state.selected_index == filtered_index;
                 let icon_handle_to_render = match &entry.icon_handle {
                     IconHandle::Loading => default_icon_handle(),
                     other => other.clone(),
@@ -199,9 +205,9 @@ impl Elbey {
             text_input("drun", &self.state.entry)
                 .id(ENTRY_WIDGET_ID.clone())
                 .on_input(ElbeyMessage::EntryUpdate)
-                .width(u32::from(self.flags.window_size.0)),
+                .width(Length::Fill),
             scrollable(Column::with_children(app_elements))
-                .width(u32::from(self.flags.window_size.0))
+                .width(Length::Fill)
                 .id(ITEMS_WIDGET_ID.clone()),
         ]
         .into()
@@ -214,6 +220,13 @@ impl Elbey {
             ElbeyMessage::ModelLoaded(items) => {
                 self.state.apps = items;
                 self.state.entry_lower = self.state.entry.to_lowercase();
+                self.state.icon_cache.reserve(
+                    self.state
+                        .apps
+                        .len()
+                        .saturating_sub(self.state.icon_cache.len()),
+                );
+                self.refresh_filtered_indices();
                 let focus_task = focus(ENTRY_WIDGET_ID.clone());
                 let load_icons_task = self.load_visible_icons();
                 Task::batch(vec![focus_task, load_icons_task])
@@ -223,6 +236,7 @@ impl Elbey {
                 self.state.entry = entry_text;
                 self.state.entry_lower = self.state.entry.to_lowercase();
                 self.state.selected_index = 0;
+                self.refresh_filtered_indices();
                 self.load_visible_icons()
             }
             // Launch an application selected by the user
@@ -353,18 +367,23 @@ impl Elbey {
     // Return ref to the selected item from the app list after applying filter
     fn selected_entry(&self) -> Option<&AppDescriptor> {
         self.state
-            .apps
-            .iter()
-            .filter(|e| Self::text_entry_filter(e, &self.state))
-            .nth(self.state.selected_index)
+            .filtered_indices
+            .get(self.state.selected_index)
+            .and_then(|original_index| self.state.apps.get(*original_index))
     }
 
     fn navigate_items(&mut self, delta: i32) {
+        let filtered_len = self.state.filtered_indices.len();
+        if filtered_len == 0 {
+            self.state.selected_index = 0;
+            return;
+        }
+
         if delta < 0 {
             self.state.selected_index = max(0, self.state.selected_index as i32 + delta) as usize;
         } else {
             self.state.selected_index = min(
-                self.state.apps.len() as i32 - 1,
+                filtered_len as i32 - 1,
                 self.state.selected_index as i32 + delta,
             ) as usize;
         }
@@ -402,14 +421,7 @@ impl Elbey {
     }
 
     fn load_visible_icons(&mut self) -> Task<ElbeyMessage> {
-        let filtered_app_indices: Vec<usize> = self
-            .state
-            .apps
-            .iter()
-            .enumerate()
-            .filter(|(_, e)| Self::text_entry_filter(e, &self.state))
-            .map(|(i, _)| i)
-            .collect();
+        let filtered_app_indices = self.state.filtered_indices.clone();
 
         let view_start = self.state.selected_index;
         let view_end =
@@ -432,6 +444,21 @@ impl Elbey {
             }
         }
         Task::batch(tasks)
+    }
+
+    fn refresh_filtered_indices(&mut self) {
+        self.state.filtered_indices = self
+            .state
+            .apps
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| Self::text_entry_filter(e, &self.state))
+            .map(|(i, _)| i)
+            .collect();
+
+        if self.state.selected_index >= self.state.filtered_indices.len() {
+            self.state.selected_index = self.state.filtered_indices.len().saturating_sub(1);
+        }
     }
 }
 
@@ -492,7 +519,6 @@ mod tests {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: test_launcher,
             theme: DEFAULT_THEME,
-            window_size: (0, 0),
             icon_size: 48,
         });
 
@@ -511,7 +537,6 @@ mod tests {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: test_launcher,
             theme: DEFAULT_THEME,
-            window_size: (0, 0),
             icon_size: 48,
         });
 
@@ -530,7 +555,6 @@ mod tests {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: test_launcher,
             theme: DEFAULT_THEME,
-            window_size: (0, 0),
             icon_size: 48,
         });
 
@@ -547,7 +571,6 @@ mod tests {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: |_| Ok(()),
             theme: DEFAULT_THEME,
-            window_size: (0, 0),
             icon_size: 48,
         });
         let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER()));
@@ -567,7 +590,6 @@ mod tests {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: |_| Ok(()),
             theme: DEFAULT_THEME,
-            window_size: (0, 0),
             icon_size: 48,
         });
         let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER()));
@@ -587,7 +609,6 @@ mod tests {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: |_| Ok(()),
             theme: DEFAULT_THEME,
-            window_size: (0, 0),
             icon_size: 48,
         });
         let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER()));
@@ -609,7 +630,6 @@ mod tests {
             apps_loader: EMPTY_LOADER,
             app_launcher: |_| Ok(()),
             theme: DEFAULT_THEME,
-            window_size: (320, 320),
             icon_size: 48,
         });
 
