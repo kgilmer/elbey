@@ -160,7 +160,10 @@ impl Elbey {
             .iter()
             .enumerate()
             .filter_map(|(filtered_index, original_index)| {
-                self.state.apps.get(*original_index).map(|entry| (filtered_index, entry))
+                self.state
+                    .apps
+                    .get(*original_index)
+                    .map(|entry| (filtered_index, entry))
             })
             .filter(|(filtered_index, _)| {
                 (self.state.selected_index..self.state.selected_index + VIEWABLE_LIST_ITEM_COUNT)
@@ -217,9 +220,12 @@ impl Elbey {
             ElbeyMessage::ModelLoaded(items) => {
                 self.state.apps = items;
                 self.state.entry_lower = self.state.entry.to_lowercase();
-                self.state
-                    .icon_cache
-                    .reserve(self.state.apps.len().saturating_sub(self.state.icon_cache.len()));
+                self.state.icon_cache.reserve(
+                    self.state
+                        .apps
+                        .len()
+                        .saturating_sub(self.state.icon_cache.len()),
+                );
                 self.refresh_filtered_indices();
                 let focus_task = focus(ENTRY_WIDGET_ID.clone());
                 let load_icons_task = self.load_visible_icons();
@@ -451,11 +457,7 @@ impl Elbey {
             .collect();
 
         if self.state.selected_index >= self.state.filtered_indices.len() {
-            self.state.selected_index = self
-                .state
-                .filtered_indices
-                .len()
-                .saturating_sub(1);
+            self.state.selected_index = self.state.filtered_indices.len().saturating_sub(1);
         }
     }
 }
