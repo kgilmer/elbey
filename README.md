@@ -2,24 +2,11 @@
 
 <img align="left" src="elbey.svg" alt="logo">
 
-A basic [desktop app](https://www.freedesktop.org/wiki/Specifications/desktop-entry-spec/) launcher implemented in Rust on [the `iced` UI framework](https://github.com/iced-rs/iced) for Linux.  This project is intentionally simple and "low abstraction" to aid in discovery and experimentation (also known as "fun").  Upon launch, the program lists all of the locally installed desktop apps with a filter widget set above.  To launch, hit `enter` on the selected item, or use the mouse.
+A [desktop app](https://www.freedesktop.org/wiki/Specifications/desktop-entry-spec/) launcher implemented in Rust on [the `iced` UI framework](https://github.com/iced-rs/iced) for Linux.  Upon launch, the program lists all of the locally installed desktop apps with a filter widget set above.  To launch, hit `enter` on the selected item, or use the mouse.
 
 ## Status
 
-The application is functional in that desktop apps can be launched from the dialog.  There is no caching, modes, persistent memory, custom theming, or other fancy features.  But, you can add them yourself if you want!
-
-### Feature Ideas
-
-Things that might be fun to add to `ebley`:
-
-* ~Sort the entries by~ usage or ~name~
-* ~Use layer shell so window always on top of existing windows~
-* ~Implement page up and page down~
-* ~Add caching to speed up retrieval of the apps~
-* ~Show app icons in addition to the titles~
-* ~Allow theme to be selected from the command line~
-* Allow for custom themes
-* Generalize the utility to allow for any list to be used
+The application is functional in that desktop apps can be launched from the dialog.
 
 ## Tests
 
@@ -33,7 +20,7 @@ The `rustdoc` is available here: [https://kgilmer.github.io/elbey](https://kgilm
 
 <img align="right" src="screenshot.png" alt="Screenshot">
 
-Elbey is only distributed via source here.
+Elbey can be installed via `cargo install elbey` or from source in this git repository:
 
 ### Build
 

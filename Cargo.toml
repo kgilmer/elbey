@@ -1,9 +1,9 @@
 [package]
 name = "elbey"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 license-file = "LICENSE"
-description = "A desktop app launcher focusing on simplicity and speed"
+description = "A desktop app launcher for Linux"
 repository = "https://github.com/kgilmer/elbey"
 readme = "README.md"
 
