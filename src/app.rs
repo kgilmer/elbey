@@ -412,7 +412,12 @@ impl Elbey {
                 if app.icon_handle == default_icon_handle() {
                     app.icon_handle = IconHandle::Loading;
                     tasks.push(Task::perform(
-                        async move { lookup(&icon_name).with_size(icon_size).find() },
+                        async move {
+                            lookup(&icon_name)
+                                .with_size(icon_size)
+                                .with_cache()
+                                .find()
+                        },
                         move |path| ElbeyMessage::IconLoaded(original_index, path),
                     ));
                 }
