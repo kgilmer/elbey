@@ -1,5 +1,8 @@
 # `elbey`
 
+[![crates.io](https://img.shields.io/crates/v/elbey.svg)](https://crates.io/crates/elbey)
+[![CI](https://github.com/kgilmer/elbey/actions/workflows/ci.yml/badge.svg)](https://github.com/kgilmer/elbey/actions/workflows/ci.yml)
+
 <img align="left" src="elbey.svg" alt="logo">
 
 A [desktop app](https://www.freedesktop.org/wiki/Specifications/desktop-entry-spec/) launcher implemented in Rust on [the `iced` UI framework](https://github.com/iced-rs/iced) for Linux.  Upon launch, the program lists all of the locally installed desktop apps with a filter widget set above.  To launch, hit `enter` on the selected item, or use the mouse.
