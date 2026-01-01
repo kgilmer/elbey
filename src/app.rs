@@ -13,7 +13,7 @@ use iced::widget::image::Handle as ImageHandle;
 use iced::widget::operation::focus;
 use iced::widget::svg::Handle as SvgHandle;
 use iced::widget::{button, column, image, row, scrollable, svg, text, text_input, Column};
-use iced::{event, window, Alignment, Element, Event, Length, Task, Theme};
+use iced::{event, window, Alignment, Element, Event, Length, Pixels, Task, Theme};
 use iced_layershell::to_layer_message;
 use serde::{Deserialize, Serialize};
 
@@ -150,6 +150,15 @@ pub struct ElbeyFlags {
     pub theme: Theme,
 
     pub icon_size: u16,
+
+    /// Placeholder text for the entry field.
+    pub hint: String,
+
+    /// Font size for the filter input.
+    pub filter_font_size: u16,
+
+    /// Font size for the entry list items.
+    pub entries_font_size: u16,
 }
 
 impl Elbey {
@@ -221,9 +230,12 @@ impl Elbey {
                     IconHandle::Loading => unreachable!(),
                     IconHandle::NotLoaded => unreachable!(),
                 };
-                let content = row![icon, text(name)]
-                    .spacing(10)
-                    .align_y(Alignment::Center);
+                let content = row![
+                    icon,
+                    text(name).size(Pixels::from(u32::from(self.flags.entries_font_size)))
+                ]
+                .spacing(10)
+                .align_y(Alignment::Center);
 
                 button(content)
                     .style(if selected { primary } else { text_style })
@@ -236,9 +248,10 @@ impl Elbey {
         // Bare bones!
         // TODO: Fancier layout?
         column![
-            text_input("drun", &self.state.entry)
+            text_input(&self.flags.hint, &self.state.entry)
                 .id(ENTRY_WIDGET_ID.clone())
                 .on_input(ElbeyMessage::EntryUpdate)
+                .size(Pixels::from(u32::from(self.flags.filter_font_size)))
                 .width(Length::Fill),
             scrollable(Column::with_children(app_elements))
                 .width(Length::Fill)
@@ -593,6 +606,9 @@ mod tests {
             app_launcher: test_launcher,
             theme: DEFAULT_THEME,
             icon_size: 48,
+            hint: DEFAULT_HINT.to_string(),
+            filter_font_size: DEFAULT_TEXT_SIZE,
+            entries_font_size: DEFAULT_TEXT_SIZE,
         });
 
         let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER()));
@@ -611,6 +627,9 @@ mod tests {
             app_launcher: test_launcher,
             theme: DEFAULT_THEME,
             icon_size: 48,
+            hint: DEFAULT_HINT.to_string(),
+            filter_font_size: DEFAULT_TEXT_SIZE,
+            entries_font_size: DEFAULT_TEXT_SIZE,
         });
 
         let _ = unit.update(ElbeyMessage::ModelLoaded(EMPTY_LOADER()));
@@ -629,6 +648,9 @@ mod tests {
             app_launcher: test_launcher,
             theme: DEFAULT_THEME,
             icon_size: 48,
+            hint: DEFAULT_HINT.to_string(),
+            filter_font_size: DEFAULT_TEXT_SIZE,
+            entries_font_size: DEFAULT_TEXT_SIZE,
         });
 
         let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER()));
@@ -646,6 +668,9 @@ mod tests {
             app_launcher: |_| Ok(()),
             theme: DEFAULT_THEME,
             icon_size: 48,
+            hint: DEFAULT_HINT.to_string(),
+            filter_font_size: DEFAULT_TEXT_SIZE,
+            entries_font_size: DEFAULT_TEXT_SIZE,
         });
         let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER()));
 
@@ -666,6 +691,9 @@ mod tests {
             app_launcher: |_| Ok(()),
             theme: DEFAULT_THEME,
             icon_size: 48,
+            hint: DEFAULT_HINT.to_string(),
+            filter_font_size: DEFAULT_TEXT_SIZE,
+            entries_font_size: DEFAULT_TEXT_SIZE,
         });
         let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER()));
 
@@ -686,6 +714,9 @@ mod tests {
             app_launcher: |_| Ok(()),
             theme: DEFAULT_THEME,
             icon_size: 48,
+            hint: DEFAULT_HINT.to_string(),
+            filter_font_size: DEFAULT_TEXT_SIZE,
+            entries_font_size: DEFAULT_TEXT_SIZE,
         });
         let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER()));
 
@@ -707,6 +738,9 @@ mod tests {
             app_launcher: |_| Ok(()),
             theme: DEFAULT_THEME,
             icon_size: 48,
+            hint: DEFAULT_HINT.to_string(),
+            filter_font_size: DEFAULT_TEXT_SIZE,
+            entries_font_size: DEFAULT_TEXT_SIZE,
         });
 
         let app_count = 50_000;
@@ -782,6 +816,9 @@ mod tests {
             app_launcher: |_| Ok(()),
             theme: DEFAULT_THEME,
             icon_size: DEFAULT_ICON_SIZE,
+            hint: DEFAULT_HINT.to_string(),
+            filter_font_size: DEFAULT_TEXT_SIZE,
+            entries_font_size: DEFAULT_TEXT_SIZE,
         });
 
         let start = Instant::now();
@@ -818,6 +855,9 @@ mod tests {
             app_launcher: |_| Ok(()),
             theme: DEFAULT_THEME,
             icon_size: DEFAULT_ICON_SIZE,
+            hint: DEFAULT_HINT.to_string(),
+            filter_font_size: DEFAULT_TEXT_SIZE,
+            entries_font_size: DEFAULT_TEXT_SIZE,
         });
 
         let start_cold = Instant::now();
@@ -852,6 +892,9 @@ mod tests {
             app_launcher: |_| Ok(()),
             theme: DEFAULT_THEME,
             icon_size: DEFAULT_ICON_SIZE,
+            hint: DEFAULT_HINT.to_string(),
+            filter_font_size: DEFAULT_TEXT_SIZE,
+            entries_font_size: DEFAULT_TEXT_SIZE,
         });
         let start_warm = Instant::now();
         let warm_apps = (warm.flags.apps_loader)();

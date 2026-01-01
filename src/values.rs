@@ -7,11 +7,12 @@ use iced::widget::Id;
 use iced::Theme;
 
 pub static PROGRAM_NAME: LazyLock<String> = LazyLock::new(|| String::from("Elbey"));
-pub const DEFAULT_WINDOW_HEIGHT: u32 = 320;
+pub const DEFAULT_WINDOW_HEIGHT: u32 = 200;
 pub const DEFAULT_WINDOW_WIDTH: u32 = 320;
-pub const DEFAULT_ICON_SIZE: u16 = 48;
+pub const DEFAULT_ICON_SIZE: u16 = 32;
 pub const DEFAULT_THEME: Theme = Theme::Nord;
 pub const DEFAULT_TEXT_SIZE: u16 = 16;
+pub const DEFAULT_HINT: &str = "drun";
 
 pub static ENTRY_WIDGET_ID: LazyLock<Id> = LazyLock::new(|| Id::new("entry"));
 

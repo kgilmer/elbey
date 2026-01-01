@@ -49,6 +49,12 @@ impl Cache {
         Some(app_descriptors)
     }
 
+    /// Clear all cached entries.
+    pub fn clear(&self) {
+        let _ = self.db.clear();
+        let _ = self.db.flush();
+    }
+
     fn write_snapshot(
         &mut self,
         apps: impl IntoIterator<Item = AppDescriptor>,

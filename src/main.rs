@@ -42,17 +42,29 @@ struct EbleyArgs {
     #[argh(option)]
     theme: Option<String>,
 
-    /// font size
+    /// font size for the filter input
     #[argh(option)]
-    font_size: Option<u16>,
+    filter_font_size: Option<u16>,
+
+    /// font size for the entry list
+    #[argh(option)]
+    entries_font_size: Option<u16>,
 
     /// icon size
     #[argh(option)]
     icon_size: Option<u16>,
 
-    /// stylesheet (unsupported)
-    #[argh(option, short = 't')]
-    _style_sheet: Option<String>,
+    /// hint string to display in the entry box (max 16 chars)
+    #[argh(option)]
+    hint: Option<String>,
+
+    /// print the desktop application search paths and exit
+    #[argh(switch)]
+    list_search_paths: bool,
+
+    /// clear the application cache before loading apps
+    #[argh(switch)]
+    reset_cache: bool,
 }
 
 fn parse_theme(name: &str) -> Option<Theme> {
@@ -92,23 +104,51 @@ fn parse_theme(name: &str) -> Option<Theme> {
     }
 }
 
+fn parse_hint(args: &EbleyArgs) -> String {
+    if let Some(h) = &args.hint {
+        if h.len() > 16 {
+            eprintln!("hint string must be 16 characters or fewer");
+            exit(1);
+        }
+        h.clone()
+    } else {
+        DEFAULT_HINT.to_string()
+    }
+}
+
 /// Program entrypoint.  Just configures the app, window, and kicks off the iced runtime.
 fn main() -> Result<(), iced_layershell::Error> {
     let args: EbleyArgs = argh::from_env();
 
+    if args.list_search_paths {
+        for path in default_paths() {
+            println!("{}", path.display());
+        }
+        return Ok(());
+    }
+
+    if args.reset_cache {
+        if let Ok(cache) = CACHE.lock() {
+            cache.clear();
+        } else {
+            eprintln!("Failed to acquire cache lock to reset cache");
+        }
+    }
+
+    let theme = args
+        .theme
+        .as_deref()
+        .and_then(parse_theme)
+        .unwrap_or(DEFAULT_THEME);
+
     let flags = ElbeyFlags {
         apps_loader: load_apps,
         app_launcher: launch_app,
-        theme: if args.theme.is_some() {
-            if let Some(theme) = parse_theme(&args.theme.unwrap()) {
-                theme
-            } else {
-                DEFAULT_THEME
-            }
-        } else {
-            DEFAULT_THEME
-        },
+        theme,
         icon_size: args.icon_size.unwrap_or(DEFAULT_ICON_SIZE),
+        hint: parse_hint(&args),
+        filter_font_size: args.filter_font_size.unwrap_or(DEFAULT_TEXT_SIZE),
+        entries_font_size: args.entries_font_size.unwrap_or(DEFAULT_TEXT_SIZE),
     };
 
     let iced_settings = Settings {
@@ -128,7 +168,9 @@ fn main() -> Result<(), iced_layershell::Error> {
         id: Some(PROGRAM_NAME.to_string()),
         fonts: vec![],
         default_font: Font::DEFAULT,
-        default_text_size: Pixels::from(u32::from(args.font_size.unwrap_or(DEFAULT_TEXT_SIZE))),
+        default_text_size: Pixels::from(u32::from(
+            args.filter_font_size.unwrap_or(DEFAULT_TEXT_SIZE),
+        )),
         antialiasing: true,
         ..Settings::default()
     };
