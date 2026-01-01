@@ -47,6 +47,7 @@ pub const VIEWABLE_LIST_ITEM_COUNT: usize = 10;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum IconHandle {
+    NotLoaded,
     Raster(ImageHandle),
     Vector(SvgHandle),
     /// Represents an icon that is currently being loaded.
