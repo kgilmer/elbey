@@ -12,6 +12,10 @@ pub(crate) struct Cache {
     db: Db,
 }
 
+fn find_cached_entry<'a>(app_id: &String, entries: &'a [AppDescriptor]) -> Option<&'a AppDescriptor> {
+    entries.iter().find(|entry| entry.appid == *app_id)
+}
+
 impl Cache {
     pub fn new(apps_loader: fn() -> Vec<AppDescriptor>) -> Self {
         let config = Config::new().path(Self::resolve_db_file_path());
@@ -42,6 +46,23 @@ impl Cache {
         Some(app_descriptors)
     }
 
+    fn write_snapshot(
+        &mut self,
+        apps: impl IntoIterator<Item = AppDescriptor>,
+    ) -> anyhow::Result<()> {
+        let mut snapshot: Vec<AppDescriptor> = apps.into_iter().collect();
+        snapshot.sort_by(|a, b| a.title.cmp(&b.title));
+        snapshot.sort_by(|a, b| b.exec_count.cmp(&a.exec_count));
+
+        self.db.clear()?;
+        for (count, app_descriptor) in snapshot.into_iter().enumerate() {
+            let encoded: Vec<u8> = bincode::serialize(&app_descriptor)?;
+            self.db.insert(count.to_be_bytes(), IVec::from(encoded))?;
+        }
+        self.db.flush()?;
+        Ok(())
+    }
+
     // Update the cache from local system and update usage stat
     pub fn update(&mut self, selected_app: &AppDescriptor) -> anyhow::Result<()> {
         // load data
@@ -53,10 +74,15 @@ impl Cache {
             Vec::with_capacity(latest_entries.len());
 
         for mut latest_entry in latest_entries {
-            let count = if let Some(ref entry_wrappers) = cached_entry_wrappers {
-                Cache::find_count(&latest_entry.appid, entry_wrappers).unwrap_or(0)
+            let (count, cached_icon_path) = if let Some(ref entry_wrappers) = cached_entry_wrappers
+            {
+                if let Some(entry) = find_cached_entry(&latest_entry.appid, entry_wrappers) {
+                    (entry.exec_count, entry.icon_path.clone())
+                } else {
+                    (0, None)
+                }
             } else {
-                0
+                (0, None)
             };
 
             latest_entry.exec_count = if latest_entry.appid == selected_app.appid {
@@ -64,34 +90,18 @@ impl Cache {
             } else {
                 count
             };
+            latest_entry.icon_path = cached_icon_path.or(latest_entry.icon_path);
 
             updated_entry_wrappers.push(latest_entry);
         }
 
         // sort
-        updated_entry_wrappers.sort_by(|a, b| a.title.cmp(&b.title));
-        updated_entry_wrappers.sort_by(|a, b| b.exec_count.cmp(&a.exec_count));
-
-        // store
-        self.db.clear()?; // Flush previous cache for new snapshot
-        for (count, app_descriptor) in updated_entry_wrappers.into_iter().enumerate() {
-            let encoded: Vec<u8> = bincode::serialize(&app_descriptor)?;
-            self.db.insert(count.to_be_bytes(), IVec::from(encoded))?;
-        }
-
-        self.db.flush()?;
-        Ok(())
+        self.write_snapshot(updated_entry_wrappers)
     }
 
-    fn find_count(app_id: &String, entries: &Vec<AppDescriptor>) -> Option<usize> {
-        for ew in entries {
-            if ew.appid == *app_id {
-                return Some(ew.exec_count);
-            }
-        }
-        None
+    pub fn store_snapshot(&mut self, apps: &[AppDescriptor]) -> anyhow::Result<()> {
+        self.write_snapshot(apps.to_vec())
     }
-
     fn resolve_db_file_path() -> PathBuf {
         let mut path = dirs::cache_dir().unwrap();
         path.push(format!(

@@ -23,7 +23,8 @@ use iced_layershell::settings::{LayerShellSettings, Settings, StartMode};
 use lazy_static::lazy_static;
 
 lazy_static! {
-    static ref CACHE: Arc<Mutex<Cache>> = Arc::new(Mutex::new(Cache::new(find_all_apps)));
+    pub(crate) static ref CACHE: Arc<Mutex<Cache>> =
+        Arc::new(Mutex::new(Cache::new(find_all_apps)));
 }
 
 #[derive(FromArgs)]

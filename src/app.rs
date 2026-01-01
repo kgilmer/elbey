@@ -15,13 +15,22 @@ use iced::widget::svg::Handle as SvgHandle;
 use iced::widget::{button, column, image, row, scrollable, svg, text, text_input, Column};
 use iced::{event, window, Alignment, Element, Event, Length, Task, Theme};
 use iced_layershell::to_layer_message;
-use iced_runtime::task::into_stream;
-use iced_runtime::Action;
-use iced_runtime::Task as RuntimeTask;
 use serde::{Deserialize, Serialize};
 
 use crate::values::*;
 use crate::PROGRAM_NAME;
+use crate::CACHE;
+
+#[cfg(test)]
+use iced_runtime::{task::into_stream, Action, Task as RuntimeTask};
+
+fn icon_handle_from_path(p: PathBuf) -> IconHandle {
+    if p.extension().and_then(|s| s.to_str()) == Some("svg") {
+        IconHandle::Vector(SvgHandle::from_path(p))
+    } else {
+        IconHandle::Raster(ImageHandle::from_path(p))
+    }
+}
 
 fn default_icon_handle() -> IconHandle {
     FALLBACK_ICON_HANDLE.clone()
@@ -36,6 +45,8 @@ pub struct AppDescriptor {
     pub exec: String,
     pub exec_count: usize,
     pub icon_name: Option<String>,
+    #[serde(default)]
+    pub icon_path: Option<PathBuf>,
     #[serde(skip, default = "default_icon_handle")]
     pub icon_handle: IconHandle,
 }
@@ -52,6 +63,7 @@ impl From<DesktopEntry> for AppDescriptor {
             exec: value.exec().expect("has exec").to_string(),
             exec_count: 0,
             icon_name: value.icon().map(str::to_string),
+            icon_path: None,
             icon_handle: default_icon_handle(),
         }
     }
@@ -252,14 +264,11 @@ impl Elbey {
             ElbeyMessage::IconLoaded(index, path) => {
                 if let Some(app) = self.state.apps.get_mut(index) {
                     if let Some(p) = path {
-                        let handle = if p.extension().and_then(|s| s.to_str()) == Some("svg") {
-                            IconHandle::Vector(SvgHandle::from_path(p))
-                        } else {
-                            IconHandle::Raster(ImageHandle::from_path(p))
-                        };
+                        let handle = icon_handle_from_path(p.clone());
                         if let Some(icon_name) = app.icon_name.clone() {
                             self.state.icon_cache.insert(icon_name, handle.clone());
                         }
+                        app.icon_path = Some(p);
                         app.icon_handle = handle;
                     } else {
                         let fallback = default_icon_handle();
@@ -268,6 +277,10 @@ impl Elbey {
                         }
                         app.icon_handle = fallback;
                         app.icon_name = None;
+                        app.icon_path = None;
+                    }
+                    if let Ok(mut cache) = CACHE.lock() {
+                        let _: anyhow::Result<()> = cache.store_snapshot(&self.state.apps);
                     }
                 }
                 Task::none()
@@ -405,6 +418,14 @@ impl Elbey {
     ) {
         if let Some(app) = self.state.apps.get_mut(original_index) {
             if let Some(icon_name) = app.icon_name.clone() {
+                if let Some(icon_path) = app.icon_path.clone() {
+                    if app.icon_handle == default_icon_handle() {
+                        let handle = icon_handle_from_path(icon_path);
+                        self.state.icon_cache.insert(icon_name, handle.clone());
+                        app.icon_handle = handle;
+                        return;
+                    }
+                }
                 if let Some(cached) = self.state.icon_cache.get(&icon_name) {
                     app.icon_handle = cached.clone();
                     return;
@@ -454,6 +475,16 @@ impl Elbey {
         Task::batch(tasks)
     }
 
+    #[cfg(test)]
+    fn load_all_icons(&mut self) -> Task<ElbeyMessage> {
+        let icon_size = self.flags.icon_size;
+        let mut tasks = vec![];
+        for idx in 0..self.state.apps.len() {
+            self.queue_icon_load(idx, icon_size, &mut tasks);
+        }
+        Task::batch(tasks)
+    }
+
     fn refresh_filtered_indices(&mut self) {
         self.state.filtered_indices = self
             .state
@@ -477,6 +508,13 @@ mod tests {
     use std::sync::LazyLock;
     use std::time::Instant;
 
+    fn set_test_cache_home() {
+        let mut cache_dir = std::env::temp_dir();
+        cache_dir.push(format!("elbey-test-cache-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&cache_dir);
+        std::env::set_var("XDG_CACHE_HOME", &cache_dir);
+    }
+
     static EMPTY_LOADER: fn() -> Vec<AppDescriptor> = || vec![];
 
     static TEST_DESKTOP_ENTRY_1: LazyLock<AppDescriptor> = LazyLock::new(|| AppDescriptor {
@@ -486,6 +524,7 @@ mod tests {
         exec: "".to_string(),
         exec_count: 0,
         icon_name: None,
+        icon_path: None,
         icon_handle: default_icon_handle(),
     });
 
@@ -496,6 +535,7 @@ mod tests {
         exec: "".to_string(),
         exec_count: 0,
         icon_name: None,
+        icon_path: None,
         icon_handle: default_icon_handle(),
     });
 
@@ -506,6 +546,7 @@ mod tests {
         exec: "".to_string(),
         exec_count: 0,
         icon_name: None,
+        icon_path: None,
         icon_handle: default_icon_handle(),
     });
 
@@ -576,6 +617,7 @@ mod tests {
 
     #[test]
     fn test_icon_loaded_png() {
+        set_test_cache_home();
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: |_| Ok(()),
@@ -595,6 +637,7 @@ mod tests {
 
     #[test]
     fn test_icon_loaded_svg() {
+        set_test_cache_home();
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: |_| Ok(()),
@@ -614,6 +657,7 @@ mod tests {
 
     #[test]
     fn test_icon_loaded_fallback() {
+        set_test_cache_home();
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: |_| Ok(()),
@@ -651,6 +695,7 @@ mod tests {
                 exec: "".to_string(),
                 exec_count: 0,
                 icon_name: None,
+                icon_path: None,
                 icon_handle: default_icon_handle(),
             })
             .collect();
@@ -697,6 +742,7 @@ mod tests {
     #[test]
     #[ignore]
     fn measure_firefox_icon_latency() {
+        set_test_cache_home();
         let locales = freedesktop_desktop_entry::get_languages_from_env();
         let locales_ref: Vec<&str> = locales.iter().map(String::as_str).collect();
         let firefox_entry = DesktopEntry::from_path(
@@ -739,29 +785,25 @@ mod tests {
     #[test]
     #[ignore]
     fn measure_all_icons_latency() {
+        set_test_cache_home();
         use crate::load_apps;
-        use std::env;
 
-        // Ensure cache writes go to a temp dir to avoid permission issues in constrained environments.
-        let mut cache_dir = env::temp_dir();
-        cache_dir.push(format!("elbey-cache-{}", std::process::id()));
-        std::fs::create_dir_all(&cache_dir).expect("create temp cache dir");
-        env::set_var("XDG_CACHE_HOME", &cache_dir);
-
-        let (mut elbey, _) = Elbey::new(ElbeyFlags {
+        // Cold run: resolve icons via filesystem lookups.
+        let (mut cold, _) = Elbey::new(ElbeyFlags {
             apps_loader: load_apps,
             app_launcher: |_| Ok(()),
             theme: DEFAULT_THEME,
             icon_size: DEFAULT_ICON_SIZE,
         });
 
-        let start = Instant::now();
-        let initial_apps = (elbey.flags.apps_loader)();
-        let initial = elbey.update(ElbeyMessage::ModelLoaded(initial_apps));
-        drive_tasks(&mut elbey, initial);
-        let elapsed = start.elapsed();
-
-        let resolved = elbey
+        let start_cold = Instant::now();
+        let initial_apps = (cold.flags.apps_loader)();
+        let task = cold.update(ElbeyMessage::ModelLoaded(initial_apps));
+        drive_tasks(&mut cold, task);
+        let all_icons = cold.load_all_icons();
+        drive_tasks(&mut cold, all_icons);
+        let cold_elapsed = start_cold.elapsed();
+        let cold_resolved = cold
             .state
             .apps
             .iter()
@@ -769,15 +811,43 @@ mod tests {
             .count();
 
         println!(
-            "all-apps icon latency: {:?} across {} apps (resolved: {})",
-            elapsed,
-            elbey.state.apps.len(),
-            resolved
+            "all-apps icon latency (cold): {:?} across {} apps (resolved: {})",
+            cold_elapsed,
+            cold.state.apps.len(),
+            cold_resolved
+        );
+
+        // Warm run: uses cached icon paths persisted from the cold run.
+        let (mut warm, _) = Elbey::new(ElbeyFlags {
+            apps_loader: load_apps,
+            app_launcher: |_| Ok(()),
+            theme: DEFAULT_THEME,
+            icon_size: DEFAULT_ICON_SIZE,
+        });
+        let start_warm = Instant::now();
+        let warm_apps = (warm.flags.apps_loader)();
+        let warm_task = warm.update(ElbeyMessage::ModelLoaded(warm_apps));
+        drive_tasks(&mut warm, warm_task);
+        let warm_icons = warm.load_all_icons();
+        drive_tasks(&mut warm, warm_icons);
+        let warm_elapsed = start_warm.elapsed();
+        let warm_resolved = warm
+            .state
+            .apps
+            .iter()
+            .filter(|app| matches!(app.icon_handle, IconHandle::Vector(_) | IconHandle::Raster(_)))
+            .count();
+
+        println!(
+            "all-apps icon latency (warm): {:?} across {} apps (resolved: {})",
+            warm_elapsed,
+            warm.state.apps.len(),
+            warm_resolved
         );
 
         assert!(
-            elapsed.as_millis() > 0,
-            "latency too small; headless timing likely invalid"
+            warm_elapsed < cold_elapsed,
+            "warm run should be faster than cold run"
         );
     }
 }
