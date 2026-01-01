@@ -12,7 +12,10 @@ pub(crate) struct Cache {
     db: Db,
 }
 
-fn find_cached_entry<'a>(app_id: &String, entries: &'a [AppDescriptor]) -> Option<&'a AppDescriptor> {
+fn find_cached_entry<'a>(
+    app_id: &String,
+    entries: &'a [AppDescriptor],
+) -> Option<&'a AppDescriptor> {
     entries.iter().find(|entry| entry.appid == *app_id)
 }
 
@@ -51,8 +54,7 @@ impl Cache {
         apps: impl IntoIterator<Item = AppDescriptor>,
     ) -> anyhow::Result<()> {
         let mut snapshot: Vec<AppDescriptor> = apps.into_iter().collect();
-        snapshot.sort_by(|a, b| a.title.cmp(&b.title));
-        snapshot.sort_by(|a, b| b.exec_count.cmp(&a.exec_count));
+        snapshot.sort_by(|a, b| (b.exec_count, &a.title).cmp(&(a.exec_count, &b.title)));
 
         self.db.clear()?;
         for (count, app_descriptor) in snapshot.into_iter().enumerate() {
