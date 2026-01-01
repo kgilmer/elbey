@@ -24,6 +24,14 @@ use crate::PROGRAM_NAME;
 #[cfg(test)]
 use iced_runtime::{task::into_stream, Action, Task as RuntimeTask};
 
+fn persist_cache_snapshot(apps: &[AppDescriptor]) {
+    if let Ok(mut cache) = CACHE.lock() {
+        if let Err(e) = cache.store_snapshot(apps) {
+            eprintln!("Failed to persist cache snapshot: {e}");
+        }
+    }
+}
+
 fn not_loaded_icon() -> IconHandle {
     IconHandle::NotLoaded
 }
@@ -287,17 +295,16 @@ impl Elbey {
                         }
                         set_icon(app, fallback, Some(PathBuf::new()));
                     }
-                    if let Ok(mut cache) = CACHE.lock() {
-                        if let Err(e) = cache.store_snapshot(&self.state.apps) {
-                            eprintln!("Failed to persist icon cache snapshot: {e}");
-                        }
-                    }
+                    persist_cache_snapshot(&self.state.apps);
                 }
                 Task::none()
             }
             // Handle keyboard entries
             ElbeyMessage::KeyEvent(key) => match key {
-                Key::Named(Named::Escape) => exit(0),
+                Key::Named(Named::Escape) => {
+                    persist_cache_snapshot(&self.state.apps);
+                    exit(0)
+                }
                 Key::Named(Named::ArrowUp) => {
                     self.navigate_items(-1);
                     self.load_visible_icons()
@@ -329,6 +336,7 @@ impl Elbey {
             }
             ElbeyMessage::LostFocus => {
                 if self.state.received_focus {
+                    persist_cache_snapshot(&self.state.apps);
                     exit(0);
                 }
                 Task::none()
