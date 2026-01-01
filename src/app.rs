@@ -15,6 +15,9 @@ use iced::widget::svg::Handle as SvgHandle;
 use iced::widget::{button, column, image, row, scrollable, svg, text, text_input, Column};
 use iced::{event, window, Alignment, Element, Event, Length, Task, Theme};
 use iced_layershell::to_layer_message;
+use iced_runtime::task::into_stream;
+use iced_runtime::Action;
+use iced_runtime::Task as RuntimeTask;
 use serde::{Deserialize, Serialize};
 
 use crate::values::*;
@@ -470,6 +473,7 @@ impl Elbey {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use iced::futures::stream::StreamExt;
     use std::sync::LazyLock;
     use std::time::Instant;
 
@@ -660,6 +664,120 @@ mod tests {
         println!(
             "load_visible_icons on {app_count} apps took {:?} (view size {})",
             elapsed, VIEWABLE_LIST_ITEM_COUNT
+        );
+    }
+
+    fn drive_tasks(elbey: &mut Elbey, task: RuntimeTask<ElbeyMessage>) {
+        use std::collections::VecDeque;
+
+        let mut queue = VecDeque::new();
+        queue.push_back(task);
+        let mut runtime = iced::futures::executor::LocalPool::new();
+
+        while let Some(task) = queue.pop_front() {
+            if let Some(mut stream) = into_stream(task) {
+                let mut outputs = Vec::new();
+                runtime.run_until(async {
+                    while let Some(action) = stream.next().await {
+                        if let Action::Output(msg) = action {
+                            outputs.push(msg);
+                        }
+                    }
+                });
+
+                for message in outputs {
+                    let follow_up = elbey.update(message);
+                    queue.push_back(follow_up);
+                }
+            }
+        }
+    }
+
+    /// Ignored by default; measures the elapsed time (in ms) to resolve the Firefox icon.
+    #[test]
+    #[ignore]
+    fn measure_firefox_icon_latency() {
+        let locales = freedesktop_desktop_entry::get_languages_from_env();
+        let locales_ref: Vec<&str> = locales.iter().map(String::as_str).collect();
+        let firefox_entry = DesktopEntry::from_path(
+            PathBuf::from("/usr/share/applications/firefox.desktop"),
+            Some(&locales_ref),
+        )
+        .expect("firefox desktop entry missing");
+
+        let firefox = AppDescriptor::from(firefox_entry);
+
+        let (mut elbey, _) = Elbey::new(ElbeyFlags {
+            apps_loader: EMPTY_LOADER,
+            app_launcher: |_| Ok(()),
+            theme: DEFAULT_THEME,
+            icon_size: DEFAULT_ICON_SIZE,
+        });
+
+        let start = Instant::now();
+        let initial = elbey.update(ElbeyMessage::ModelLoaded(vec![firefox]));
+        drive_tasks(&mut elbey, initial);
+        let elapsed = start.elapsed();
+
+        if let Some(app) = elbey.state.apps.first() {
+            println!(
+                "firefox icon latency: {:?} (icon_name: {:?})",
+                elapsed, app.icon_name
+            );
+            assert!(app.icon_name.is_some(), "icon did not resolve");
+        } else {
+            panic!("no app loaded");
+        }
+
+        assert!(
+            elapsed.as_millis() > 0,
+            "latency too small; headless timing likely invalid"
+        );
+    }
+
+    /// Ignored by default; measures total icon resolution time across all discovered apps.
+    #[test]
+    #[ignore]
+    fn measure_all_icons_latency() {
+        use crate::load_apps;
+        use std::env;
+
+        // Ensure cache writes go to a temp dir to avoid permission issues in constrained environments.
+        let mut cache_dir = env::temp_dir();
+        cache_dir.push(format!("elbey-cache-{}", std::process::id()));
+        std::fs::create_dir_all(&cache_dir).expect("create temp cache dir");
+        env::set_var("XDG_CACHE_HOME", &cache_dir);
+
+        let (mut elbey, _) = Elbey::new(ElbeyFlags {
+            apps_loader: load_apps,
+            app_launcher: |_| Ok(()),
+            theme: DEFAULT_THEME,
+            icon_size: DEFAULT_ICON_SIZE,
+        });
+
+        let start = Instant::now();
+        let initial_apps = (elbey.flags.apps_loader)();
+        let initial = elbey.update(ElbeyMessage::ModelLoaded(initial_apps));
+        drive_tasks(&mut elbey, initial);
+        let elapsed = start.elapsed();
+
+        let resolved = elbey
+            .state
+            .apps
+            .iter()
+            .filter(|app| matches!(app.icon_handle, IconHandle::Vector(_) | IconHandle::Raster(_)))
+            .count();
+
+        println!(
+            "all-apps icon latency: {:?} across {} apps (resolved: {})",
+            elapsed,
+            elbey.state.apps.len(),
+            resolved
+        );
+
+        assert!(
+            elapsed.as_millis() > 0,
+            "latency too small; headless timing likely invalid"
         );
     }
 }

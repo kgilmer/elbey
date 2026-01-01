@@ -20,3 +20,6 @@ lazy_static = "1.5"
 serde = { version = "1.0", features = ["serde_derive"] }
 shell-words = "^1"
 sled = "0.34"
+
+[dev-dependencies]
+iced_runtime = "0.14"
