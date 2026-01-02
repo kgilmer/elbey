@@ -11,9 +11,32 @@ A [desktop app](https://www.freedesktop.org/wiki/Specifications/desktop-entry-sp
 
 The application is functional in that desktop apps can be launched from the dialog.
 
-## Tests
+## Configuration
 
-There are a [few unit tests](https://github.com/kgilmer/elbey/blob/main/src/app.rs#L234) that exercise some basic functions.
+All configuration is done via arguments:
+
+```console
+$ elbey --help
+Usage: elbey [--height <height>] [--width <width>] [--theme <theme>] [--filter-font-size <filter-font-size>] [--entries-font-size <entries-font-size>] [--icon-size <icon-size>] [--hint <hint>] [--list-search-paths] [--reset-cache]
+
+Desktop app launcher
+
+Options:
+  --height          height
+  --width           width
+  --theme           theme name:
+                    CatppuccinFrappe,CatppuccinLatte,CatppuccinMacchiato,CatppuccinMocha,Dark,Dracula,Ferra,GruvboxDark,GruvboxLight,KanagawaDragon,KanagawaLotus,KanagawaWave,Light,Moonfly,Nightfly,Nord,Oxocarbon,TokyoNight,TokyoNightLight,TokyoNightStorm,AyuMirage
+  --filter-font-size
+                    font size for the filter input
+  --entries-font-size
+                    font size for the entry list
+  --icon-size       icon size
+  --hint            hint string to display in the entry box (max 16 chars)
+  --list-search-paths
+                    print the desktop application search paths and exit
+  --reset-cache     clear the application cache before loading apps
+  --help, help      display usage information
+```
 
 ## Documentation
 
