@@ -236,6 +236,7 @@ impl Elbey {
         container(content)
             .width(Length::Fill)
             .height(Length::Fill)
+            .padding(1)
             .style(|theme: &Theme| {
                 let palette = theme.extended_palette();
                 container::Style::default()
