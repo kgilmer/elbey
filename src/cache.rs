@@ -74,11 +74,7 @@ fn icon_handle_from_data(icon_data: &CachedIcon) -> IconHandle {
             width,
             height,
             pixels,
-        } => IconHandle::Raster(ImageHandle::from_rgba(
-            *width,
-            *height,
-            pixels.clone(),
-        )),
+        } => IconHandle::Raster(ImageHandle::from_rgba(*width, *height, pixels.clone())),
         CachedIcon::Svg(bytes) => IconHandle::Vector(SvgHandle::from_memory(bytes.clone())),
     }
 }
@@ -372,7 +368,7 @@ mod tests {
             .expect("encode test icon");
         std::fs::write(&icon_path, &png_bytes).expect("write test icon");
 
-        let mut cache = Cache::new(|| vec![]);
+        let mut cache = Cache::new(Vec::new);
         let app = AppDescriptor {
             appid: "test-app".to_string(),
             title: "Test App".to_string(),

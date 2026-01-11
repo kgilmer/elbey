@@ -500,8 +500,7 @@ mod tests {
     #[test]
     fn test_no_apps_try_launch() {
         let test_launcher: fn(&AppDescriptor) -> anyhow::Result<()> = |_e| {
-            assert!(false); // should never get here
-            Ok(())
+            unreachable!("should never get here");
         };
 
         let (mut unit, _) = Elbey::new(ElbeyFlags {

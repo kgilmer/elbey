@@ -223,8 +223,7 @@ fn load_apps() -> Vec<AppDescriptor> {
         }
         apps
     } else {
-        let apps = cache.read_all().unwrap_or_else(find_all_apps);
-        apps
+        cache.read_all().unwrap_or_else(find_all_apps)
     }
 }
 
