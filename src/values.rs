@@ -51,6 +51,4 @@ pub enum IconHandle {
     NotLoaded,
     Raster(ImageHandle),
     Vector(SvgHandle),
-    /// Represents an icon that is currently being loaded.
-    Loading,
 }

@@ -1,6 +1,6 @@
 [package]
 name = "elbey"
-version = "0.6.1"
+version = "0.6.2"
 edition = "2021"
 license-file = "LICENSE"
 description = "A desktop app launcher for Linux"
@@ -16,6 +16,7 @@ freedesktop-desktop-entry = "0.8"
 freedesktop-icons = "0.3.1"
 iced = { version = "0.14", features = ["image", "svg"] }
 iced_layershell = "0.14.2"
+image = "0.25"
 lazy_static = "1.5"
 serde = { version = "1.0", features = ["serde_derive"] }
 shell-words = "^1"
