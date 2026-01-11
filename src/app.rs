@@ -11,7 +11,7 @@ use iced::widget::operation::focus;
 use iced::widget::{
     button, column, container, image, row, scrollable, svg, text, text_input, Column,
 };
-use iced::{event, window, Alignment, Element, Event, Length, Pixels, Task, Theme};
+use iced::{border, event, window, Alignment, Element, Event, Length, Pixels, Task, Theme};
 use iced_layershell::to_layer_message;
 use serde::{Deserialize, Serialize};
 
@@ -238,7 +238,9 @@ impl Elbey {
             .height(Length::Fill)
             .style(|theme: &Theme| {
                 let palette = theme.extended_palette();
-                container::Style::default().background(palette.background.base.color)
+                container::Style::default()
+                    .background(palette.background.base.color)
+                    .border(border::width(1).color(palette.background.base.text))
             })
             .into()
     }
