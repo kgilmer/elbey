@@ -11,7 +11,7 @@ use crate::values::*;
 use anyhow::Context;
 use app::{AppDescriptor, Elbey, ElbeyFlags};
 use argh::FromArgs;
-use cache::Cache;
+use cache::{delete_cache_dir, Cache};
 use freedesktop_desktop_entry::{
     current_desktop, default_paths, get_languages_from_env, DesktopEntry, Iter,
 };
@@ -128,11 +128,10 @@ fn main() -> Result<(), iced_layershell::Error> {
     }
 
     if args.reset_cache {
-        if let Ok(cache) = CACHE.lock() {
-            cache.clear();
-        } else {
-            eprintln!("Failed to acquire cache lock to reset cache");
+        if let Err(err) = delete_cache_dir() {
+            eprintln!("Failed to delete cache: {err}");
         }
+        return Ok(());
     }
 
     let theme = args
@@ -214,13 +213,18 @@ fn launch_app(entry: &AppDescriptor) -> anyhow::Result<()> {
 }
 
 fn load_apps() -> Vec<AppDescriptor> {
-    let cache = CACHE.lock().expect("Failed to acquire cache");
+    let mut cache = CACHE.lock().expect("Failed to acquire cache");
 
     if cache.is_empty() {
         // No cache available, probably first launch of current version.  Traverse FS looking for apps.
-        find_all_apps()
+        let apps = find_all_apps();
+        if let Err(err) = cache.build_snapshot_with_icons(&apps) {
+            eprintln!("Failed to store cache snapshot: {err}");
+        }
+        apps
     } else {
-        cache.read_all().unwrap_or(find_all_apps())
+        let apps = cache.read_all().unwrap_or_else(find_all_apps);
+        apps
     }
 }
 

@@ -1,18 +1,16 @@
 //! Functions and other types for `iced` UI to view, filter, and launch apps
 use std::cmp::{max, min};
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::exit;
 
 use freedesktop_desktop_entry::DesktopEntry;
-use freedesktop_icons::lookup;
 use iced::keyboard::key::Named;
 use iced::keyboard::Key;
 use iced::widget::button::{primary, text as text_style};
-use iced::widget::image::Handle as ImageHandle;
 use iced::widget::operation::focus;
-use iced::widget::svg::Handle as SvgHandle;
-use iced::widget::{button, column, image, row, scrollable, svg, text, text_input, Column};
+use iced::widget::{
+    button, column, container, image, row, scrollable, svg, text, text_input, Column,
+};
 use iced::{event, window, Alignment, Element, Event, Length, Pixels, Task, Theme};
 use iced_layershell::to_layer_message;
 use serde::{Deserialize, Serialize};
@@ -20,9 +18,6 @@ use serde::{Deserialize, Serialize};
 use crate::values::*;
 use crate::CACHE;
 use crate::PROGRAM_NAME;
-
-#[cfg(test)]
-use iced_runtime::{task::into_stream, Action, Task as RuntimeTask};
 
 fn persist_cache_snapshot(apps: &[AppDescriptor]) {
     if let Ok(mut cache) = CACHE.lock() {
@@ -36,21 +31,8 @@ fn not_loaded_icon() -> IconHandle {
     IconHandle::NotLoaded
 }
 
-fn icon_handle_from_path(p: PathBuf) -> IconHandle {
-    if p.extension().and_then(|s| s.to_str()) == Some("svg") {
-        IconHandle::Vector(SvgHandle::from_path(p))
-    } else {
-        IconHandle::Raster(ImageHandle::from_path(p))
-    }
-}
-
 fn default_icon_handle() -> IconHandle {
     FALLBACK_ICON_HANDLE.clone()
-}
-
-fn set_icon(app: &mut AppDescriptor, handle: IconHandle, path: Option<PathBuf>) {
-    app.icon_handle = handle;
-    app.icon_path = path;
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -101,8 +83,6 @@ pub struct State {
     selected_index: usize,
     /// A flag to indicate app window has received focus. Work around to some windowing environments passing `unfocused` unexpectedly.
     received_focus: bool,
-    /// Cache of icon handles keyed by icon name to avoid repeated theme lookups
-    icon_cache: HashMap<String, IconHandle>,
 }
 
 /// Root struct of application
@@ -112,17 +92,12 @@ pub struct Elbey {
     flags: ElbeyFlags,
 }
 
-/// Number of icons to prefetch beyond the current viewport to avoid UI jank when scrolling.
-const PREFETCH_ICON_COUNT: usize = VIEWABLE_LIST_ITEM_COUNT;
-
 /// Messages are how your logic mutates the app state and GUI
 #[to_layer_message]
 #[derive(Debug, Clone)]
 pub enum ElbeyMessage {
     /// Signals that the `DesktopEntries` have been fully loaded into the vec
     ModelLoaded(Vec<AppDescriptor>),
-    /// Signals that an icon path has been found for an app
-    IconLoaded(usize, Option<PathBuf>),
     /// Signals that the primary text edit box on the UI has been changed by the user, including the new text.
     EntryUpdate(String),
     /// Signals that the user has taken primary action on a selection.  In the case of a desktop app launcher, the app is launched.
@@ -180,7 +155,6 @@ impl Elbey {
                     filtered_indices: vec![],
                     selected_index: 0,
                     received_focus: false,
-                    icon_cache: HashMap::new(),
                 },
                 flags,
             },
@@ -215,7 +189,6 @@ impl Elbey {
                 let selected = self.state.selected_index == filtered_index;
                 let icon_handle_to_render = match &entry.icon_handle {
                     IconHandle::NotLoaded => default_icon_handle(),
-                    IconHandle::Loading => default_icon_handle(),
                     other => other.clone(),
                 };
                 let icon: Element<'_, ElbeyMessage> = match icon_handle_to_render {
@@ -227,7 +200,6 @@ impl Elbey {
                         .width(Length::Fixed(self.flags.icon_size.into()))
                         .height(Length::Fixed(self.flags.icon_size.into()))
                         .into(),
-                    IconHandle::Loading => unreachable!(),
                     IconHandle::NotLoaded => unreachable!(),
                 };
                 let content = row![
@@ -247,7 +219,7 @@ impl Elbey {
 
         // Bare bones!
         // TODO: Fancier layout?
-        column![
+        let content = column![
             text_input(&self.flags.hint, &self.state.entry)
                 .id(ENTRY_WIDGET_ID.clone())
                 .on_input(ElbeyMessage::EntryUpdate)
@@ -255,9 +227,20 @@ impl Elbey {
                 .width(Length::Fill),
             scrollable(Column::with_children(app_elements))
                 .width(Length::Fill)
+                .height(Length::Fill)
                 .id(ITEMS_WIDGET_ID.clone()),
         ]
-        .into()
+        .width(Length::Fill)
+        .height(Length::Fill);
+
+        container(content)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(|theme: &Theme| {
+                let palette = theme.extended_palette();
+                container::Style::default().background(palette.background.base.color)
+            })
+            .into()
     }
 
     /// Entry-point from `iced` to handle user and system events
@@ -267,16 +250,9 @@ impl Elbey {
             ElbeyMessage::ModelLoaded(items) => {
                 self.state.apps = items;
                 self.state.entry_lower = self.state.entry.to_lowercase();
-                self.state.icon_cache.reserve(
-                    self.state
-                        .apps
-                        .len()
-                        .saturating_sub(self.state.icon_cache.len()),
-                );
                 self.refresh_filtered_indices();
                 let focus_task = focus(ENTRY_WIDGET_ID.clone());
-                let load_icons_task = self.load_visible_icons();
-                Task::batch(vec![focus_task, load_icons_task])
+                Task::batch(vec![focus_task])
             }
             // Rebuild the select list based on the updated text entry
             ElbeyMessage::EntryUpdate(entry_text) => {
@@ -284,31 +260,12 @@ impl Elbey {
                 self.state.entry_lower = self.state.entry.to_lowercase();
                 self.state.selected_index = 0;
                 self.refresh_filtered_indices();
-                self.load_visible_icons()
+                Task::none()
             }
             // Launch an application selected by the user
             ElbeyMessage::ExecuteSelected() => {
                 if let Some(entry) = self.selected_entry() {
                     (self.flags.app_launcher)(entry).expect("Failed to launch app");
-                }
-                Task::none()
-            }
-            ElbeyMessage::IconLoaded(index, path) => {
-                if let Some(app) = self.state.apps.get_mut(index) {
-                    if let Some(p) = path {
-                        let handle = icon_handle_from_path(p.clone());
-                        if let Some(icon_name) = app.icon_name.clone() {
-                            self.state.icon_cache.insert(icon_name, handle.clone());
-                        }
-                        set_icon(app, handle, Some(p));
-                    } else {
-                        let fallback = default_icon_handle();
-                        if let Some(icon_name) = app.icon_name.clone() {
-                            self.state.icon_cache.insert(icon_name, fallback.clone());
-                        }
-                        set_icon(app, fallback, Some(PathBuf::new()));
-                    }
-                    persist_cache_snapshot(&self.state.apps);
                 }
                 Task::none()
             }
@@ -320,19 +277,19 @@ impl Elbey {
                 }
                 Key::Named(Named::ArrowUp) => {
                     self.navigate_items(-1);
-                    self.load_visible_icons()
+                    Task::none()
                 }
                 Key::Named(Named::ArrowDown) => {
                     self.navigate_items(1);
-                    self.load_visible_icons()
+                    Task::none()
                 }
                 Key::Named(Named::PageUp) => {
                     self.navigate_items(-(VIEWABLE_LIST_ITEM_COUNT as i32));
-                    self.load_visible_icons()
+                    Task::none()
                 }
                 Key::Named(Named::PageDown) => {
                     self.navigate_items(VIEWABLE_LIST_ITEM_COUNT as i32);
-                    self.load_visible_icons()
+                    Task::none()
                 }
                 Key::Named(Named::Enter) => {
                     if let Some(entry) = self.selected_entry() {
@@ -441,82 +398,6 @@ impl Elbey {
         entry.lower_title.contains(&model.entry_lower)
     }
 
-    fn queue_icon_load(
-        &mut self,
-        original_index: usize,
-        icon_size: u16,
-        tasks: &mut Vec<Task<ElbeyMessage>>,
-    ) {
-        if let Some(app) = self.state.apps.get_mut(original_index) {
-            if let Some(icon_name) = app.icon_name.clone() {
-                if let Some(icon_path) = app.icon_path.clone() {
-                    if icon_path.as_os_str().is_empty() {
-                        set_icon(app, default_icon_handle(), Some(icon_path));
-                        return;
-                    }
-                    if matches!(app.icon_handle, IconHandle::NotLoaded) {
-                        let handle = icon_handle_from_path(icon_path);
-                        self.state
-                            .icon_cache
-                            .insert(icon_name.clone(), handle.clone());
-                        set_icon(app, handle, app.icon_path.clone());
-                        return;
-                    }
-                }
-                if let Some(cached) = self.state.icon_cache.get(&icon_name) {
-                    app.icon_handle = cached.clone();
-                    return;
-                }
-                if app.icon_handle == IconHandle::Loading {
-                    return;
-                }
-                if matches!(app.icon_handle, IconHandle::NotLoaded) {
-                    app.icon_handle = IconHandle::Loading;
-                    tasks.push(Task::perform(
-                        async move { lookup(&icon_name).with_size(icon_size).with_cache().find() },
-                        move |path| ElbeyMessage::IconLoaded(original_index, path),
-                    ));
-                }
-            }
-        }
-    }
-
-    fn load_visible_icons(&mut self) -> Task<ElbeyMessage> {
-        let filtered_app_indices = self.state.filtered_indices.clone();
-
-        let view_start = self.state.selected_index;
-        let view_end =
-            (self.state.selected_index + VIEWABLE_LIST_ITEM_COUNT).min(filtered_app_indices.len());
-
-        let icon_size = self.flags.icon_size;
-
-        let mut tasks = vec![];
-
-        if let Some(visible_indices) = filtered_app_indices.get(view_start..view_end) {
-            for &original_index in visible_indices {
-                self.queue_icon_load(original_index, icon_size, &mut tasks);
-            }
-        }
-
-        let prefetch_end = (view_end + PREFETCH_ICON_COUNT).min(filtered_app_indices.len());
-        if let Some(prefetch_indices) = filtered_app_indices.get(view_end..prefetch_end) {
-            for &original_index in prefetch_indices {
-                self.queue_icon_load(original_index, icon_size, &mut tasks);
-            }
-        }
-        Task::batch(tasks)
-    }
-
-    #[cfg(test)]
-    fn load_all_icons(&mut self) -> Task<ElbeyMessage> {
-        let icon_size = self.flags.icon_size;
-        let mut tasks = vec![];
-        for idx in 0..self.state.apps.len() {
-            self.queue_icon_load(idx, icon_size, &mut tasks);
-        }
-        Task::batch(tasks)
-    }
-
     fn refresh_filtered_indices(&mut self) {
         self.state.filtered_indices = self
             .state
@@ -536,9 +417,7 @@ impl Elbey {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use iced::futures::stream::StreamExt;
     use std::sync::{LazyLock, OnceLock};
-    use std::time::Instant;
 
     fn set_test_cache_home() {
         static CACHE_HOME: OnceLock<PathBuf> = OnceLock::new();
@@ -661,7 +540,7 @@ mod tests {
     }
 
     #[test]
-    fn test_icon_loaded_png() {
+    fn test_loaded_icons_render_immediately() {
         set_test_cache_home();
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
@@ -674,257 +553,9 @@ mod tests {
         });
         let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER()));
 
-        let png_path = PathBuf::from("test.png");
-        let _ = unit.update(ElbeyMessage::IconLoaded(0, Some(png_path)));
-
         assert!(matches!(
             unit.state.apps[0].icon_handle,
-            IconHandle::Raster(_)
+            IconHandle::Vector(_) | IconHandle::Raster(_) | IconHandle::NotLoaded
         ));
-    }
-
-    #[test]
-    fn test_icon_loaded_svg() {
-        set_test_cache_home();
-        let (mut unit, _) = Elbey::new(ElbeyFlags {
-            apps_loader: TEST_ENTRY_LOADER,
-            app_launcher: |_| Ok(()),
-            theme: DEFAULT_THEME,
-            icon_size: 48,
-            hint: DEFAULT_HINT.to_string(),
-            filter_font_size: DEFAULT_TEXT_SIZE,
-            entries_font_size: DEFAULT_TEXT_SIZE,
-        });
-        let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER()));
-
-        let svg_path = PathBuf::from("test.svg");
-        let _ = unit.update(ElbeyMessage::IconLoaded(0, Some(svg_path)));
-
-        assert!(matches!(
-            unit.state.apps[0].icon_handle,
-            IconHandle::Vector(_)
-        ));
-    }
-
-    #[test]
-    fn test_icon_loaded_fallback() {
-        set_test_cache_home();
-        let (mut unit, _) = Elbey::new(ElbeyFlags {
-            apps_loader: TEST_ENTRY_LOADER,
-            app_launcher: |_| Ok(()),
-            theme: DEFAULT_THEME,
-            icon_size: 48,
-            hint: DEFAULT_HINT.to_string(),
-            filter_font_size: DEFAULT_TEXT_SIZE,
-            entries_font_size: DEFAULT_TEXT_SIZE,
-        });
-        let _ = unit.update(ElbeyMessage::ModelLoaded(TEST_ENTRY_LOADER()));
-
-        let _ = unit.update(ElbeyMessage::IconLoaded(0, None));
-
-        assert!(matches!(
-            unit.state.apps[0].icon_handle,
-            IconHandle::Vector(_)
-        ));
-    }
-
-    /// Ignored by default; run with `cargo test measure_load_visible_icons_time -- --ignored --nocapture`
-    /// to capture the elapsed time for filtering and preparing icon loads over a large dataset.
-    #[test]
-    #[ignore]
-    fn measure_load_visible_icons_time() {
-        let (mut unit, _) = Elbey::new(ElbeyFlags {
-            apps_loader: EMPTY_LOADER,
-            app_launcher: |_| Ok(()),
-            theme: DEFAULT_THEME,
-            icon_size: 48,
-            hint: DEFAULT_HINT.to_string(),
-            filter_font_size: DEFAULT_TEXT_SIZE,
-            entries_font_size: DEFAULT_TEXT_SIZE,
-        });
-
-        let app_count = 50_000;
-        unit.state.apps = (0..app_count)
-            .map(|i| AppDescriptor {
-                appid: format!("test_app_id_{i}"),
-                title: format!("App {i}"),
-                lower_title: format!("app {i}"),
-                exec: "".to_string(),
-                exec_count: 0,
-                icon_name: None,
-                icon_path: None,
-                icon_handle: IconHandle::NotLoaded,
-            })
-            .collect();
-        unit.state.entry = "app 4".to_string();
-        unit.state.entry_lower = unit.state.entry.to_lowercase();
-        unit.state.selected_index = 0;
-
-        let start = Instant::now();
-        let _ = unit.load_visible_icons();
-        let elapsed = start.elapsed();
-        println!(
-            "load_visible_icons on {app_count} apps took {:?} (view size {})",
-            elapsed, VIEWABLE_LIST_ITEM_COUNT
-        );
-    }
-
-    /// Drives iced `Task` streams to completion in tests, emulating the runtime loop.
-    fn drain_tasks(elbey: &mut Elbey, task: RuntimeTask<ElbeyMessage>) {
-        use std::collections::VecDeque;
-
-        let mut queue = VecDeque::new();
-        queue.push_back(task);
-        let mut runtime = iced::futures::executor::LocalPool::new();
-
-        while let Some(task) = queue.pop_front() {
-            if let Some(mut stream) = into_stream(task) {
-                let mut outputs = Vec::new();
-                runtime.run_until(async {
-                    while let Some(action) = stream.next().await {
-                        if let Action::Output(msg) = action {
-                            outputs.push(msg);
-                        }
-                    }
-                });
-
-                for message in outputs {
-                    let follow_up = elbey.update(message);
-                    queue.push_back(follow_up);
-                }
-            }
-        }
-    }
-
-    /// Ignored by default; measures the elapsed time (in ms) to resolve the Firefox icon.
-    #[test]
-    #[ignore]
-    fn measure_firefox_icon_latency() {
-        set_test_cache_home();
-        let locales = freedesktop_desktop_entry::get_languages_from_env();
-        let locales_ref: Vec<&str> = locales.iter().map(String::as_str).collect();
-        let firefox_entry = DesktopEntry::from_path(
-            PathBuf::from("/usr/share/applications/firefox.desktop"),
-            Some(&locales_ref),
-        )
-        .expect("firefox desktop entry missing");
-
-        let firefox = AppDescriptor::from(firefox_entry);
-
-        let (mut elbey, _) = Elbey::new(ElbeyFlags {
-            apps_loader: EMPTY_LOADER,
-            app_launcher: |_| Ok(()),
-            theme: DEFAULT_THEME,
-            icon_size: DEFAULT_ICON_SIZE,
-            hint: DEFAULT_HINT.to_string(),
-            filter_font_size: DEFAULT_TEXT_SIZE,
-            entries_font_size: DEFAULT_TEXT_SIZE,
-        });
-
-        let start = Instant::now();
-        let initial = elbey.update(ElbeyMessage::ModelLoaded(vec![firefox]));
-        drain_tasks(&mut elbey, initial);
-        let elapsed = start.elapsed();
-
-        if let Some(app) = elbey.state.apps.first() {
-            println!(
-                "firefox icon latency: {:?} (icon_name: {:?})",
-                elapsed, app.icon_name
-            );
-            assert!(app.icon_name.is_some(), "icon did not resolve");
-        } else {
-            panic!("no app loaded");
-        }
-
-        assert!(
-            elapsed.as_millis() > 0,
-            "latency too small; headless timing likely invalid"
-        );
-    }
-
-    /// Ignored by default; measures total icon resolution time across all discovered apps.
-    #[test]
-    #[ignore]
-    fn measure_all_icons_latency() {
-        set_test_cache_home();
-        use crate::load_apps;
-
-        // Cold run: resolve icons via filesystem lookups.
-        let (mut cold, _) = Elbey::new(ElbeyFlags {
-            apps_loader: load_apps,
-            app_launcher: |_| Ok(()),
-            theme: DEFAULT_THEME,
-            icon_size: DEFAULT_ICON_SIZE,
-            hint: DEFAULT_HINT.to_string(),
-            filter_font_size: DEFAULT_TEXT_SIZE,
-            entries_font_size: DEFAULT_TEXT_SIZE,
-        });
-
-        let start_cold = Instant::now();
-        let initial_apps = (cold.flags.apps_loader)();
-        let task = cold.update(ElbeyMessage::ModelLoaded(initial_apps));
-        drain_tasks(&mut cold, task);
-        let all_icons = cold.load_all_icons();
-        drain_tasks(&mut cold, all_icons);
-        let cold_elapsed = start_cold.elapsed();
-        let cold_resolved = cold
-            .state
-            .apps
-            .iter()
-            .filter(|app| {
-                matches!(
-                    app.icon_handle,
-                    IconHandle::Vector(_) | IconHandle::Raster(_)
-                )
-            })
-            .count();
-
-        println!(
-            "all-apps icon latency (cold): {:?} across {} apps (resolved: {})",
-            cold_elapsed,
-            cold.state.apps.len(),
-            cold_resolved
-        );
-
-        // Warm run: uses cached icon paths persisted from the cold run.
-        let (mut warm, _) = Elbey::new(ElbeyFlags {
-            apps_loader: load_apps,
-            app_launcher: |_| Ok(()),
-            theme: DEFAULT_THEME,
-            icon_size: DEFAULT_ICON_SIZE,
-            hint: DEFAULT_HINT.to_string(),
-            filter_font_size: DEFAULT_TEXT_SIZE,
-            entries_font_size: DEFAULT_TEXT_SIZE,
-        });
-        let start_warm = Instant::now();
-        let warm_apps = (warm.flags.apps_loader)();
-        let warm_task = warm.update(ElbeyMessage::ModelLoaded(warm_apps));
-        drain_tasks(&mut warm, warm_task);
-        let warm_icons = warm.load_all_icons();
-        drain_tasks(&mut warm, warm_icons);
-        let warm_elapsed = start_warm.elapsed();
-        let warm_resolved = warm
-            .state
-            .apps
-            .iter()
-            .filter(|app| {
-                matches!(
-                    app.icon_handle,
-                    IconHandle::Vector(_) | IconHandle::Raster(_)
-                )
-            })
-            .count();
-
-        println!(
-            "all-apps icon latency (warm): {:?} across {} apps (resolved: {})",
-            warm_elapsed,
-            warm.state.apps.len(),
-            warm_resolved
-        );
-
-        assert!(
-            warm_elapsed < cold_elapsed,
-            "warm run should be faster than cold run"
-        );
     }
 }
