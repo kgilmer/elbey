@@ -1,3 +1,13 @@
+//! Cache and shared app metadata types for the Elbey launcher.
+//!
+//! This crate provides a sled-backed cache for desktop app metadata and icon data,
+//! along with the app descriptor types used by the launcher.
+//! 
+//! It uses iced types for images.  Data is returned in order of `exec_count`.  This value
+//! is updated each time an app is launched by the user.
+//! 
+//! Clients should call refresh() off the critical path to refresh the cache from Desktop apps on disk
+
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
