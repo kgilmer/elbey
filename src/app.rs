@@ -1,9 +1,8 @@
 //! Functions and other types for `iced` UI to view, filter, and launch apps
 use std::cmp::{max, min};
-use std::path::PathBuf;
 use std::process::exit;
 
-use freedesktop_desktop_entry::DesktopEntry;
+use elbey_cache::AppDescriptor;
 use iced::keyboard::key::Named;
 use iced::keyboard::Key;
 use iced::widget::button::{primary, text as text_style};
@@ -13,7 +12,6 @@ use iced::widget::{
 };
 use iced::{border, event, window, Alignment, Element, Event, Length, Pixels, Task, Theme};
 use iced_layershell::to_layer_message;
-use serde::{Deserialize, Serialize};
 
 use crate::values::*;
 use crate::CACHE;
@@ -27,45 +25,8 @@ fn persist_cache_snapshot(apps: &[AppDescriptor]) {
     }
 }
 
-fn not_loaded_icon() -> IconHandle {
-    IconHandle::NotLoaded
-}
-
 fn default_icon_handle() -> IconHandle {
     FALLBACK_ICON_HANDLE.clone()
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AppDescriptor {
-    pub appid: String,
-    pub title: String,
-    #[serde(default)]
-    pub lower_title: String,
-    pub exec: String,
-    pub exec_count: usize,
-    pub icon_name: Option<String>,
-    #[serde(default)]
-    pub icon_path: Option<PathBuf>,
-    #[serde(skip, default = "not_loaded_icon")]
-    pub icon_handle: IconHandle,
-}
-
-impl From<DesktopEntry> for AppDescriptor {
-    fn from(value: DesktopEntry) -> Self {
-        AppDescriptor {
-            appid: value.appid.clone(),
-            title: value.desktop_entry("Name").expect("get name").to_string(),
-            lower_title: value
-                .desktop_entry("Name")
-                .expect("get name")
-                .to_lowercase(),
-            exec: value.exec().expect("has exec").to_string(),
-            exec_count: 0,
-            icon_name: value.icon().map(str::to_string),
-            icon_path: None,
-            icon_handle: IconHandle::NotLoaded,
-        }
-    }
 }
 
 /// The application model type.  See [the iced book](https://book.iced.rs/) for details.
@@ -420,6 +381,7 @@ impl Elbey {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     use std::sync::{LazyLock, OnceLock};
 
     fn set_test_cache_home() {

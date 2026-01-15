@@ -7,8 +7,7 @@ use iced::widget::svg::Handle as SvgHandle;
 use serde::{Deserialize, Serialize};
 use sled::{Config, Db, IVec};
 
-use crate::app::AppDescriptor;
-use crate::values::{IconHandle, DEFAULT_ICON_SIZE, FALLBACK_ICON_HANDLE};
+use crate::{AppDescriptor, IconHandle, DEFAULT_ICON_SIZE, FALLBACK_ICON_HANDLE};
 
 static SCAN_KEY: [u8; 4] = 0_i32.to_be_bytes();
 
@@ -38,8 +37,8 @@ struct CachedAppDescriptor {
     pub icon_data: Option<CachedIcon>,
 }
 
-/// Tracks state to sort apps by usage
-pub(crate) struct Cache {
+/// Tracks state to sort apps by usage and persist cached metadata.
+pub struct Cache {
     apps_loader: fn() -> Vec<AppDescriptor>,
     db: Db,
 }
@@ -188,8 +187,18 @@ impl CachedAppDescriptor {
 }
 
 impl Cache {
+    /// Create a cache using the crate name as the cache namespace.
     pub fn new(apps_loader: fn() -> Vec<AppDescriptor>) -> Self {
-        let path = Self::resolve_db_file_path();
+        Self::new_with_namespace(apps_loader, env!("CARGO_PKG_NAME"))
+    }
+
+    /// Create a cache using a custom namespace for the cache directory.
+    pub fn new_with_namespace(
+        apps_loader: fn() -> Vec<AppDescriptor>,
+        namespace: impl Into<String>,
+    ) -> Self {
+        let namespace = namespace.into();
+        let path = resolve_db_file_path(&namespace);
         let config = Config::new().path(path);
         let db = config.open().unwrap();
 
@@ -200,14 +209,79 @@ impl Cache {
         self.db.is_empty()
     }
 
-    pub fn read_all(&self) -> Option<Vec<AppDescriptor>> {
+    /// Load all cached entries into app descriptors, if available.
+    pub fn read_all(&mut self) -> Option<Vec<AppDescriptor>> {
         let entries = self.read_cached_entries()?;
-        Some(
-            entries
-                .into_iter()
-                .map(CachedAppDescriptor::into_app_descriptor)
-                .collect(),
-        )
+        if !entries.is_empty() || !self.db.is_empty() {
+            return Some(
+                entries
+                    .into_iter()
+                    .map(CachedAppDescriptor::into_app_descriptor)
+                    .collect(),
+            );
+        }
+
+        let apps = (self.apps_loader)();
+        if apps.is_empty() {
+            return Some(Vec::new());
+        }
+        if self.build_snapshot_with_icons(&apps).is_ok() {
+            let entries = self.read_cached_entries()?;
+            return Some(
+                entries
+                    .into_iter()
+                    .map(CachedAppDescriptor::into_app_descriptor)
+                    .collect(),
+            );
+        }
+
+        Some(apps)
+    }
+
+    /// Load up to `count` cached entries into app descriptors, if available.
+    pub fn read_top(&mut self, count: usize) -> Option<Vec<AppDescriptor>> {
+        let entries = self.read_cached_entries_top(count)?;
+        if !entries.is_empty() || !self.db.is_empty() {
+            return Some(
+                entries
+                    .into_iter()
+                    .map(CachedAppDescriptor::into_app_descriptor)
+                    .collect(),
+            );
+        }
+
+        if count == 0 {
+            return Some(Vec::new());
+        }
+
+        let apps = (self.apps_loader)();
+        if apps.is_empty() {
+            return Some(Vec::new());
+        }
+        if self.build_snapshot_with_icons(&apps).is_ok() {
+            let entries = self.read_cached_entries_top(count)?;
+            return Some(
+                entries
+                    .into_iter()
+                    .map(CachedAppDescriptor::into_app_descriptor)
+                    .collect(),
+            );
+        }
+
+        Some(apps.into_iter().take(count).collect())
+    }
+
+    pub fn refresh(&mut self) -> anyhow::Result<()> {
+        self.update_from_loader(None)
+    }
+
+    /// Load from cache when present, falling back to the loader and populating icons.
+    pub fn load_from_apps_loader(&mut self) -> Vec<AppDescriptor> {
+        self.read_all().unwrap_or_else(|| {
+            let apps = (self.apps_loader)();
+            let _ = self.build_snapshot_with_icons(&apps);
+            apps
+        })
     }
 
     fn write_snapshot(
@@ -226,8 +300,7 @@ impl Cache {
         Ok(())
     }
 
-    // Update the cache from local system and update usage stat
-    pub fn update(&mut self, selected_app: &AppDescriptor) -> anyhow::Result<()> {
+    fn update_from_loader(&mut self, selected_appid: Option<&str>) -> anyhow::Result<()> {
         // load data
         let latest_entries = (self.apps_loader)();
         let cached_entries = self.read_cached_entries().unwrap_or_default();
@@ -248,11 +321,8 @@ impl Cache {
                 (0, None, None)
             };
 
-            latest_entry.exec_count = if latest_entry.appid == selected_app.appid {
-                count + 1
-            } else {
-                count
-            };
+            let is_selected = selected_appid == Some(latest_entry.appid.as_str());
+            latest_entry.exec_count = if is_selected { count + 1 } else { count };
             latest_entry.icon_path = cached_icon_path.or(latest_entry.icon_path);
 
             updated_entry_wrappers.push(CachedAppDescriptor::from_app_descriptor(
@@ -265,6 +335,13 @@ impl Cache {
         self.write_snapshot(updated_entry_wrappers)
     }
 
+    // Update the cache from local system and update usage stat
+    /// Refresh from the loader and increment usage for the selected app.
+    pub fn update(&mut self, selected_app: &AppDescriptor) -> anyhow::Result<()> {
+        self.update_from_loader(Some(selected_app.appid.as_str()))
+    }
+
+    /// Store a snapshot of apps, reusing cached icon data when possible.
     pub fn store_snapshot(&mut self, apps: &[AppDescriptor]) -> anyhow::Result<()> {
         let cached_icons: HashMap<String, Option<CachedIcon>> = self
             .read_cached_entries()
@@ -304,14 +381,26 @@ impl Cache {
         Some(app_descriptors)
     }
 
-    pub(crate) fn resolve_db_file_path() -> PathBuf {
-        let mut path = dirs::cache_dir().unwrap();
-        path.push(format!(
-            "{}-{}",
-            env!("CARGO_PKG_NAME"),
-            env!("CARGO_PKG_VERSION")
-        ));
-        path
+    fn read_cached_entries_top(&self, count: usize) -> Option<Vec<CachedAppDescriptor>> {
+        let iter = self.db.range(SCAN_KEY..);
+        let mut app_descriptors: Vec<CachedAppDescriptor> = Vec::with_capacity(count);
+        for item in iter.take(count) {
+            let (_key, desc_ivec) = item.ok()?;
+
+            let mut cached: CachedAppDescriptor =
+                match bincode::deserialize::<CachedAppDescriptor>(&desc_ivec[..]) {
+                    Ok(entry) => entry,
+                    Err(_) => {
+                        let app: AppDescriptor = bincode::deserialize(&desc_ivec[..]).ok()?;
+                        CachedAppDescriptor::from_app_descriptor(app, None)
+                    }
+                };
+
+            cached = cached.normalize();
+            app_descriptors.push(cached);
+        }
+
+        Some(app_descriptors)
     }
 
     pub fn build_snapshot_with_icons(&mut self, apps: &[AppDescriptor]) -> anyhow::Result<()> {
@@ -325,8 +414,20 @@ impl Cache {
     }
 }
 
-pub(crate) fn delete_cache_dir() -> std::io::Result<()> {
-    let path = Cache::resolve_db_file_path();
+fn resolve_db_file_path(namespace: &str) -> PathBuf {
+    let mut path = dirs::cache_dir().unwrap();
+    path.push(format!("{}-{}", namespace, env!("CARGO_PKG_VERSION")));
+    path
+}
+
+/// Remove the cache directory for the default namespace.
+pub fn delete_cache_dir() -> std::io::Result<()> {
+    delete_cache_dir_with_namespace(env!("CARGO_PKG_NAME"))
+}
+
+/// Remove the cache directory for a specific namespace.
+pub fn delete_cache_dir_with_namespace(namespace: &str) -> std::io::Result<()> {
+    let path = resolve_db_file_path(namespace);
     if path.exists() {
         std::fs::remove_dir_all(path)?;
     }
@@ -337,7 +438,10 @@ pub(crate) fn delete_cache_dir() -> std::io::Result<()> {
 mod tests {
     use super::*;
     use image::ImageEncoder;
-    use std::sync::OnceLock;
+    use std::sync::{LazyLock, Mutex, OnceLock};
+
+    static LOADER_APPS: LazyLock<Mutex<Vec<AppDescriptor>>> =
+        LazyLock::new(|| Mutex::new(Vec::new()));
 
     fn set_test_cache_home() -> PathBuf {
         static CACHE_HOME: OnceLock<PathBuf> = OnceLock::new();
@@ -349,6 +453,32 @@ mod tests {
         });
         std::env::set_var("XDG_CACHE_HOME", cache_dir);
         cache_dir.clone()
+    }
+
+    fn empty_loader() -> Vec<AppDescriptor> {
+        Vec::new()
+    }
+
+    fn shared_loader() -> Vec<AppDescriptor> {
+        LOADER_APPS.lock().expect("lock loader apps").clone()
+    }
+
+    fn make_app(
+        appid: &str,
+        title: &str,
+        exec_count: usize,
+        icon_path: Option<PathBuf>,
+    ) -> AppDescriptor {
+        AppDescriptor {
+            appid: appid.to_string(),
+            title: title.to_string(),
+            lower_title: title.to_lowercase(),
+            exec: "/bin/true".to_string(),
+            exec_count,
+            icon_name: None,
+            icon_path,
+            icon_handle: IconHandle::NotLoaded,
+        }
     }
 
     #[test]
@@ -384,5 +514,118 @@ mod tests {
         let apps = cache.read_all().expect("read snapshot");
 
         assert!(matches!(apps[0].icon_handle, IconHandle::Raster(_)));
+    }
+
+    #[test]
+    fn test_write_snapshot_sorts_by_count_then_title() {
+        set_test_cache_home();
+        let mut cache = Cache::new_with_namespace(empty_loader, "test-sort");
+        let apps = vec![
+            make_app("app-1", "Zoo", 5, None),
+            make_app("app-2", "Alpha", 5, None),
+            make_app("app-3", "Beta", 2, None),
+        ];
+
+        cache.store_snapshot(&apps).expect("store snapshot");
+        let apps = cache.read_all().expect("read snapshot");
+
+        let titles: Vec<&str> = apps.iter().map(|app| app.title.as_str()).collect();
+        assert_eq!(titles, vec!["Alpha", "Zoo", "Beta"]);
+    }
+
+    #[test]
+    fn test_refresh_preserves_count_and_cached_icon_data() {
+        let cache_home = set_test_cache_home();
+        let icon_path = cache_home.join("test-refresh-icon.png");
+        let mut png_bytes = Vec::new();
+        let image = image::RgbaImage::from_pixel(1, 1, image::Rgba([0, 255, 0, 255]));
+        let encoder = image::codecs::png::PngEncoder::new(&mut png_bytes);
+        encoder
+            .write_image(
+                image.as_raw(),
+                image.width(),
+                image.height(),
+                image::ExtendedColorType::Rgba8,
+            )
+            .expect("encode refresh icon");
+        std::fs::write(&icon_path, &png_bytes).expect("write refresh icon");
+
+        let mut cache = Cache::new_with_namespace(shared_loader, "test-refresh");
+        let initial_app = make_app("app-1", "Cached App", 3, Some(icon_path.clone()));
+        cache
+            .build_snapshot_with_icons(&[initial_app.clone()])
+            .expect("seed cache");
+
+        let refreshed_app = AppDescriptor {
+            icon_path: None,
+            exec_count: 0,
+            ..initial_app
+        };
+        *LOADER_APPS.lock().expect("lock loader apps") = vec![refreshed_app];
+
+        cache.refresh().expect("refresh cache");
+        let apps = cache.read_all().expect("read snapshot");
+
+        assert_eq!(apps[0].exec_count, 3);
+        assert_eq!(apps[0].icon_path.as_ref(), Some(&icon_path));
+        assert!(matches!(apps[0].icon_handle, IconHandle::Raster(_)));
+    }
+
+    #[test]
+    fn test_refresh_drops_missing_apps() {
+        set_test_cache_home();
+        let mut cache = Cache::new_with_namespace(shared_loader, "test-drop");
+        let apps = vec![
+            make_app("app-1", "Keep", 1, None),
+            make_app("app-2", "Drop", 2, None),
+        ];
+        cache.store_snapshot(&apps).expect("store snapshot");
+
+        *LOADER_APPS.lock().expect("lock loader apps") = vec![make_app("app-1", "Keep", 0, None)];
+        cache.refresh().expect("refresh cache");
+
+        let apps = cache.read_all().expect("read snapshot");
+        assert_eq!(apps.len(), 1);
+        assert_eq!(apps[0].appid, "app-1");
+    }
+
+    #[test]
+    fn test_legacy_decode_normalizes_titles() {
+        set_test_cache_home();
+        let mut cache = Cache::new_with_namespace(empty_loader, "test-legacy");
+        let app = AppDescriptor {
+            appid: "legacy-app".to_string(),
+            title: "Legacy App".to_string(),
+            lower_title: String::new(),
+            exec: "/bin/true".to_string(),
+            exec_count: 1,
+            icon_name: None,
+            icon_path: None,
+            icon_handle: IconHandle::NotLoaded,
+        };
+        let encoded = bincode::serialize(&app).expect("serialize legacy app");
+        cache
+            .db
+            .insert(0_u32.to_be_bytes(), IVec::from(encoded))
+            .expect("insert legacy entry");
+        cache.db.flush().expect("flush legacy entry");
+
+        let apps = cache.read_all().expect("read snapshot");
+        assert_eq!(apps[0].lower_title, "legacy app");
+        assert!(matches!(apps[0].icon_handle, IconHandle::NotLoaded));
+    }
+
+    #[test]
+    fn test_read_all_populates_cache_on_first_run() {
+        set_test_cache_home();
+        *LOADER_APPS.lock().expect("lock loader apps") =
+            vec![make_app("app-1", "First Run", 0, None)];
+
+        let mut cache = Cache::new_with_namespace(shared_loader, "test-read-populates");
+        let apps = cache.read_all().expect("read snapshot");
+
+        assert_eq!(apps.len(), 1);
+        assert_eq!(apps[0].appid, "app-1");
+        assert!(!cache.is_empty());
     }
 }
