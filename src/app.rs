@@ -381,6 +381,7 @@ impl Elbey {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     use std::sync::{LazyLock, OnceLock};
 
     fn set_test_cache_home() {

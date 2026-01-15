@@ -614,4 +614,18 @@ mod tests {
         assert_eq!(apps[0].lower_title, "legacy app");
         assert!(matches!(apps[0].icon_handle, IconHandle::NotLoaded));
     }
+
+    #[test]
+    fn test_read_all_populates_cache_on_first_run() {
+        set_test_cache_home();
+        *LOADER_APPS.lock().expect("lock loader apps") =
+            vec![make_app("app-1", "First Run", 0, None)];
+
+        let mut cache = Cache::new_with_namespace(shared_loader, "test-read-populates");
+        let apps = cache.read_all().expect("read snapshot");
+
+        assert_eq!(apps.len(), 1);
+        assert_eq!(apps[0].appid, "app-1");
+        assert!(!cache.is_empty());
+    }
 }
