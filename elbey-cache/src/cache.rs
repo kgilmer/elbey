@@ -28,7 +28,7 @@ struct CachedAppDescriptor {
     pub title: String,
     #[serde(default)]
     pub lower_title: String,
-    pub exec: String,
+    pub exec: Option<String>,
     pub exec_count: usize,
     pub icon_name: Option<String>,
     #[serde(default)]
