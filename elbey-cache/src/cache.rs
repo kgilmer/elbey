@@ -9,6 +9,8 @@ use sled::{Config, Db, IVec};
 
 use crate::{AppDescriptor, IconHandle, DEFAULT_ICON_SIZE, FALLBACK_ICON_HANDLE};
 
+const CACHE_NAMESPACE: &str = "elbey";
+
 static SCAN_KEY: [u8; 4] = 0_i32.to_be_bytes();
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -187,18 +189,9 @@ impl CachedAppDescriptor {
 }
 
 impl Cache {
-    /// Create a cache using the crate name as the cache namespace.
+    /// Create a cache using the default Elbey cache namespace.
     pub fn new(apps_loader: fn() -> Vec<AppDescriptor>) -> Self {
-        Self::new_with_namespace(apps_loader, env!("CARGO_PKG_NAME"))
-    }
-
-    /// Create a cache using a custom namespace for the cache directory.
-    pub fn new_with_namespace(
-        apps_loader: fn() -> Vec<AppDescriptor>,
-        namespace: impl Into<String>,
-    ) -> Self {
-        let namespace = namespace.into();
-        let path = resolve_db_file_path(&namespace);
+        let path = resolve_db_file_path();
         let config = Config::new().path(path);
         let db = config.open().unwrap();
 
@@ -414,20 +407,15 @@ impl Cache {
     }
 }
 
-fn resolve_db_file_path(namespace: &str) -> PathBuf {
+fn resolve_db_file_path() -> PathBuf {
     let mut path = dirs::cache_dir().unwrap();
-    path.push(format!("{}-{}", namespace, env!("CARGO_PKG_VERSION")));
+    path.push(format!("{}-{}", CACHE_NAMESPACE, env!("CARGO_PKG_VERSION")));
     path
 }
 
 /// Remove the cache directory for the default namespace.
 pub fn delete_cache_dir() -> std::io::Result<()> {
-    delete_cache_dir_with_namespace(env!("CARGO_PKG_NAME"))
-}
-
-/// Remove the cache directory for a specific namespace.
-pub fn delete_cache_dir_with_namespace(namespace: &str) -> std::io::Result<()> {
-    let path = resolve_db_file_path(namespace);
+    let path = resolve_db_file_path();
     if path.exists() {
         std::fs::remove_dir_all(path)?;
     }
@@ -442,6 +430,7 @@ mod tests {
 
     static LOADER_APPS: LazyLock<Mutex<Vec<AppDescriptor>>> =
         LazyLock::new(|| Mutex::new(Vec::new()));
+    static CACHE_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     fn set_test_cache_home() -> PathBuf {
         static CACHE_HOME: OnceLock<PathBuf> = OnceLock::new();
@@ -453,6 +442,16 @@ mod tests {
         });
         std::env::set_var("XDG_CACHE_HOME", cache_dir);
         cache_dir.clone()
+    }
+
+    fn prepare_test_cache() -> std::sync::MutexGuard<'static, ()> {
+        let guard = CACHE_LOCK.lock().expect("lock cache tests");
+        set_test_cache_home();
+        let path = resolve_db_file_path();
+        if path.exists() {
+            let _ = std::fs::remove_dir_all(path);
+        }
+        guard
     }
 
     fn empty_loader() -> Vec<AppDescriptor> {
@@ -483,6 +482,7 @@ mod tests {
 
     #[test]
     fn test_cache_reads_icons_as_rgba() {
+        let _guard = prepare_test_cache();
         let cache_home = set_test_cache_home();
         let icon_path = cache_home.join("test-icon.png");
         let mut png_bytes = Vec::new();
@@ -518,8 +518,8 @@ mod tests {
 
     #[test]
     fn test_write_snapshot_sorts_by_count_then_title() {
-        set_test_cache_home();
-        let mut cache = Cache::new_with_namespace(empty_loader, "test-sort");
+        let _guard = prepare_test_cache();
+        let mut cache = Cache::new(empty_loader);
         let apps = vec![
             make_app("app-1", "Zoo", 5, None),
             make_app("app-2", "Alpha", 5, None),
@@ -535,6 +535,7 @@ mod tests {
 
     #[test]
     fn test_refresh_preserves_count_and_cached_icon_data() {
+        let _guard = prepare_test_cache();
         let cache_home = set_test_cache_home();
         let icon_path = cache_home.join("test-refresh-icon.png");
         let mut png_bytes = Vec::new();
@@ -550,7 +551,7 @@ mod tests {
             .expect("encode refresh icon");
         std::fs::write(&icon_path, &png_bytes).expect("write refresh icon");
 
-        let mut cache = Cache::new_with_namespace(shared_loader, "test-refresh");
+        let mut cache = Cache::new(shared_loader);
         let initial_app = make_app("app-1", "Cached App", 3, Some(icon_path.clone()));
         cache
             .build_snapshot_with_icons(&[initial_app.clone()])
@@ -573,8 +574,8 @@ mod tests {
 
     #[test]
     fn test_refresh_drops_missing_apps() {
-        set_test_cache_home();
-        let mut cache = Cache::new_with_namespace(shared_loader, "test-drop");
+        let _guard = prepare_test_cache();
+        let mut cache = Cache::new(shared_loader);
         let apps = vec![
             make_app("app-1", "Keep", 1, None),
             make_app("app-2", "Drop", 2, None),
@@ -591,8 +592,8 @@ mod tests {
 
     #[test]
     fn test_legacy_decode_normalizes_titles() {
-        set_test_cache_home();
-        let mut cache = Cache::new_with_namespace(empty_loader, "test-legacy");
+        let _guard = prepare_test_cache();
+        let mut cache = Cache::new(empty_loader);
         let app = AppDescriptor {
             appid: "legacy-app".to_string(),
             title: "Legacy App".to_string(),
@@ -617,11 +618,11 @@ mod tests {
 
     #[test]
     fn test_read_all_populates_cache_on_first_run() {
-        set_test_cache_home();
+        let _guard = prepare_test_cache();
         *LOADER_APPS.lock().expect("lock loader apps") =
             vec![make_app("app-1", "First Run", 0, None)];
 
-        let mut cache = Cache::new_with_namespace(shared_loader, "test-read-populates");
+        let mut cache = Cache::new(shared_loader);
         let apps = cache.read_all().expect("read snapshot");
 
         assert_eq!(apps.len(), 1);

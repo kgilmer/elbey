@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 mod cache;
 
-pub use cache::{delete_cache_dir, delete_cache_dir_with_namespace, Cache};
+pub use cache::{delete_cache_dir, Cache};
 
 /// Default icon size for freedesktop icon lookups.
 pub const DEFAULT_ICON_SIZE: u16 = 32;
