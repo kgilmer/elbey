@@ -69,7 +69,7 @@ pub struct AppDescriptor {
     pub title: String,
     #[serde(default)]
     pub lower_title: String,
-    pub exec: String,
+    pub exec: Option<String>,
     pub exec_count: usize,
     pub icon_name: Option<String>,
     #[serde(default)]
@@ -87,7 +87,7 @@ impl From<DesktopEntry> for AppDescriptor {
                 .desktop_entry("Name")
                 .expect("get name")
                 .to_lowercase(),
-            exec: value.exec().expect("has exec").to_string(),
+            exec: value.exec().map(str::to_string),
             exec_count: 0,
             icon_name: value.icon().map(str::to_string),
             icon_path: None,

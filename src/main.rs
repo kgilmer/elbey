@@ -192,7 +192,8 @@ fn main() -> Result<(), iced_layershell::Error> {
 
 /// Launch an app described by `entry`.  This implementation exits the process upon successful launch.
 fn launch_app(entry: &AppDescriptor) -> anyhow::Result<()> {
-    let args = shell_words::split(entry.exec.as_str())?;
+    let exec = entry.exec.as_deref().context("Missing exec command")?;
+    let args = shell_words::split(exec)?;
     let args = args
         .iter()
         // Filter out special freedesktop syntax
