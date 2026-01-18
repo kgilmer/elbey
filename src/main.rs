@@ -10,7 +10,7 @@ use crate::values::*;
 use anyhow::Context;
 use app::{Elbey, ElbeyFlags};
 use argh::FromArgs;
-use elbey_cache::{delete_cache_dir_with_namespace, AppDescriptor, Cache};
+use elbey_cache::{delete_cache_dir, AppDescriptor, Cache};
 use freedesktop_desktop_entry::{
     current_desktop, default_paths, get_languages_from_env, DesktopEntry, Iter,
 };
@@ -22,12 +22,9 @@ use iced_layershell::settings::{LayerShellSettings, Settings, StartMode};
 use lazy_static::lazy_static;
 
 lazy_static! {
-    pub(crate) static ref CACHE: Arc<Mutex<Cache>> = Arc::new(Mutex::new(
-        Cache::new_with_namespace(find_all_apps, CACHE_NAMESPACE,)
-    ));
+    pub(crate) static ref CACHE: Arc<Mutex<Cache>> =
+        Arc::new(Mutex::new(Cache::new(find_all_apps)));
 }
-
-const CACHE_NAMESPACE: &str = "elbey";
 
 #[derive(FromArgs)]
 /// Desktop app launcher
@@ -130,7 +127,7 @@ fn main() -> Result<(), iced_layershell::Error> {
     }
 
     if args.reset_cache {
-        if let Err(err) = delete_cache_dir_with_namespace(CACHE_NAMESPACE) {
+        if let Err(err) = delete_cache_dir() {
             eprintln!("Failed to delete cache: {err}");
         }
         return Ok(());

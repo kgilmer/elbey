@@ -1,6 +1,6 @@
 [package]
 name = "elbey"
-version = "0.7.1"
+version = "0.8.0"
 edition = "2021"
 license-file = "LICENSE"
 description = "A desktop app launcher for Linux"
@@ -10,7 +10,7 @@ readme = "README.md"
 [dependencies]
 anyhow = "1.0"
 argh = "0.1"
-elbey-cache = { version = "0.7.1", path = "elbey-cache" }
+elbey-cache = { version = "0.8.0", path = "elbey-cache" }
 freedesktop-desktop-entry = "0.8"
 iced = { version = "0.14", features = ["image", "svg"] }
 iced_layershell = "0.14.2"

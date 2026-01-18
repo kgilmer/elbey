@@ -7,11 +7,9 @@ use freedesktop_desktop_entry::{
     current_desktop, default_paths, get_languages_from_env, DesktopEntry, Iter,
 };
 
-const CACHE_NAMESPACE: &str = "elbey";
-
 fn main() -> anyhow::Result<()> {
     let count = parse_count();
-    let mut cache = Cache::new_with_namespace(find_all_apps, CACHE_NAMESPACE);
+    let mut cache = Cache::new(find_all_apps);
 
     let read_start = Instant::now();
     let apps = cache.read_top(count).unwrap_or_default();
