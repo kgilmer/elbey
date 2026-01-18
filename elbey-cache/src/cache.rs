@@ -5,7 +5,7 @@ use freedesktop_icons::lookup;
 use iced::widget::image::Handle as ImageHandle;
 use iced::widget::svg::Handle as SvgHandle;
 use serde::{Deserialize, Serialize};
-use sled::{Config, Db, IVec};
+use sled::{Batch, Config, Db, IVec};
 
 use crate::{AppDescriptor, IconHandle, DEFAULT_ICON_SIZE, FALLBACK_ICON_HANDLE};
 
@@ -284,11 +284,16 @@ impl Cache {
         let mut snapshot: Vec<CachedAppDescriptor> = apps.into_iter().collect();
         snapshot.sort_by(|a, b| (b.exec_count, &a.title).cmp(&(a.exec_count, &b.title)));
 
-        self.db.clear()?;
+        let mut batch = Batch::default();
+        for item in self.db.range(SCAN_KEY..) {
+            let (key, _value) = item?;
+            batch.remove(key);
+        }
         for (count, app_descriptor) in snapshot.into_iter().enumerate() {
             let encoded: Vec<u8> = bincode::serialize(&app_descriptor)?;
-            self.db.insert(count.to_be_bytes(), IVec::from(encoded))?;
+            batch.insert(count.to_be_bytes().to_vec(), IVec::from(encoded));
         }
+        self.db.apply_batch(batch)?;
         self.db.flush()?;
         Ok(())
     }
