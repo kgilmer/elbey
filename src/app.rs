@@ -19,7 +19,7 @@ use crate::PROGRAM_NAME;
 
 fn persist_cache_snapshot(apps: &[AppDescriptor]) {
     if let Ok(mut cache) = CACHE.lock() {
-        if let Err(e) = cache.store_snapshot(apps) {
+        if let Err(e) = cache.save_snapshot(apps) {
             eprintln!("Failed to persist cache snapshot: {e}");
         }
     }
@@ -69,6 +69,8 @@ pub enum ElbeyMessage {
     GainedFocus,
     /// Signals that the window has lost focus
     LostFocus,
+    /// Triggers a follow-up render after initial model load.
+    PostLoadRefresh,
 }
 
 /// Provide some initial configuration to app to facilitate testing
@@ -216,7 +218,8 @@ impl Elbey {
                 self.state.entry_lower = self.state.entry.to_lowercase();
                 self.refresh_filtered_indices();
                 let focus_task = focus(ENTRY_WIDGET_ID.clone());
-                Task::batch(vec![focus_task])
+                let refresh_task = Task::perform(async {}, |_| ElbeyMessage::PostLoadRefresh);
+                Task::batch(vec![focus_task, refresh_task])
             }
             // Rebuild the select list based on the updated text entry
             ElbeyMessage::EntryUpdate(entry_text) => {
@@ -275,6 +278,7 @@ impl Elbey {
                 }
                 Task::none()
             }
+            ElbeyMessage::PostLoadRefresh => Task::none(),
             ElbeyMessage::AnchorChange(anchor) => {
                 dbg!(anchor);
                 Task::none()

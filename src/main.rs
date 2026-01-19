@@ -10,7 +10,7 @@ use crate::values::*;
 use anyhow::Context;
 use app::{Elbey, ElbeyFlags};
 use argh::FromArgs;
-use elbey_cache::{delete_cache_dir, AppDescriptor, Cache};
+use elbey_cache::{clear_cache_dir, AppDescriptor, Cache};
 use freedesktop_desktop_entry::{
     current_desktop, default_paths, get_languages_from_env, DesktopEntry, Iter,
 };
@@ -127,7 +127,7 @@ fn main() -> Result<(), iced_layershell::Error> {
     }
 
     if args.reset_cache {
-        if let Err(err) = delete_cache_dir() {
+        if let Err(err) = clear_cache_dir() {
             eprintln!("Failed to delete cache: {err}");
         }
         return Ok(());
@@ -204,7 +204,7 @@ fn launch_app(entry: &AppDescriptor) -> anyhow::Result<()> {
         .map(|_| ())?;
 
     if let Ok(cache) = CACHE.lock().as_mut() {
-        cache.update(entry)?;
+        cache.record_launch(entry)?;
     } else {
         eprint!("Failed to acquire cache");
     }
@@ -214,7 +214,7 @@ fn launch_app(entry: &AppDescriptor) -> anyhow::Result<()> {
 
 fn load_apps() -> Vec<AppDescriptor> {
     let mut cache = CACHE.lock().expect("Failed to acquire cache");
-    cache.load_from_apps_loader()
+    cache.load_apps()
 }
 
 /// Load DesktopEntry's from `DesktopIter`

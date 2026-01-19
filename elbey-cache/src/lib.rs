@@ -8,6 +8,7 @@
 //!
 //! Clients should call refresh() off the critical path to refresh the cache from Desktop apps on disk
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
@@ -18,7 +19,7 @@ use serde::{Deserialize, Serialize};
 
 mod cache;
 
-pub use cache::{delete_cache_dir, Cache};
+pub use cache::{clear_cache_dir, Cache};
 
 /// Default icon size for freedesktop icon lookups.
 pub const DEFAULT_ICON_SIZE: u16 = 32;
@@ -92,6 +93,32 @@ impl From<DesktopEntry> for AppDescriptor {
             icon_name: value.icon().map(str::to_string),
             icon_path: None,
             icon_handle: IconHandle::NotLoaded,
+        }
+    }
+}
+
+/// Preserve loaded icon handles when identifiers match between two app lists.
+fn preserve_icon_handles(source: &[AppDescriptor], target: &mut [AppDescriptor]) {
+    if source.is_empty() || target.is_empty() {
+        return;
+    }
+
+    let mut source_by_id: HashMap<String, &AppDescriptor> = HashMap::with_capacity(source.len());
+    for app in source {
+        source_by_id.insert(app.appid.clone(), app);
+    }
+
+    for app in target {
+        if let Some(existing) = source_by_id.get(&app.appid) {
+            let same_icon =
+                existing.icon_path == app.icon_path && existing.icon_name == app.icon_name;
+            let handle_loaded = matches!(
+                existing.icon_handle,
+                IconHandle::Raster(_) | IconHandle::Vector(_)
+            );
+            if same_icon && handle_loaded {
+                app.icon_handle = existing.icon_handle.clone();
+            }
         }
     }
 }

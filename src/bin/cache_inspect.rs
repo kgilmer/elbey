@@ -12,7 +12,7 @@ fn main() -> anyhow::Result<()> {
     let mut cache = Cache::new(find_all_apps);
 
     let read_start = Instant::now();
-    let apps = cache.read_top(count).unwrap_or_default();
+    let apps = cache.top_apps(count).unwrap_or_default();
     let read_elapsed = read_start.elapsed();
 
     println!("title\tusage\ticon_path");
@@ -26,7 +26,7 @@ fn main() -> anyhow::Result<()> {
     }
     println!("read_ms\t{}", read_elapsed.as_millis());
 
-    let _ = cache.load_from_apps_loader();
+    let _ = cache.load_apps();
 
     let update_start = Instant::now();
     if let Err(err) = cache.refresh() {
