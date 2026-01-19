@@ -218,8 +218,7 @@ impl Elbey {
                 self.state.entry_lower = self.state.entry.to_lowercase();
                 self.refresh_filtered_indices();
                 let focus_task = focus(ENTRY_WIDGET_ID.clone());
-                let refresh_task =
-                    Task::perform(async {}, |_| ElbeyMessage::PostLoadRefresh);
+                let refresh_task = Task::perform(async {}, |_| ElbeyMessage::PostLoadRefresh);
                 Task::batch(vec![focus_task, refresh_task])
             }
             // Rebuild the select list based on the updated text entry
