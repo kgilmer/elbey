@@ -7,7 +7,9 @@ use iced::widget::svg::Handle as SvgHandle;
 use serde::{Deserialize, Serialize};
 use sled::{Batch, Config, Db, IVec};
 
-use crate::{AppDescriptor, IconHandle, DEFAULT_ICON_SIZE, FALLBACK_ICON_HANDLE};
+use crate::{
+    preserve_icon_handles, AppDescriptor, IconHandle, DEFAULT_ICON_SIZE, FALLBACK_ICON_HANDLE,
+};
 
 const CACHE_NAMESPACE: &str = "elbey";
 
@@ -198,12 +200,8 @@ impl Cache {
         Cache { apps_loader, db }
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.db.is_empty()
-    }
-
     /// Load all cached entries into app descriptors, if available.
-    pub fn read_all(&mut self) -> Option<Vec<AppDescriptor>> {
+    fn read_all(&mut self) -> Option<Vec<AppDescriptor>> {
         let entries = self.read_cached_entries()?;
         if !entries.is_empty() || !self.db.is_empty() {
             return Some(
@@ -232,7 +230,7 @@ impl Cache {
     }
 
     /// Load up to `count` cached entries into app descriptors, if available.
-    pub fn read_top(&mut self, count: usize) -> Option<Vec<AppDescriptor>> {
+    pub fn top_apps(&mut self, count: usize) -> Option<Vec<AppDescriptor>> {
         let entries = self.read_cached_entries_top(count)?;
         if !entries.is_empty() || !self.db.is_empty() {
             return Some(
@@ -268,8 +266,51 @@ impl Cache {
         self.update_from_loader(None)
     }
 
+    /// Refresh the cache and patch an existing app list in-place, preserving icon handles
+    /// when the underlying icon identifiers are unchanged.
+    fn refresh_in_place(&mut self, apps: &mut Vec<AppDescriptor>) -> anyhow::Result<()> {
+        self.refresh()?;
+        let cached_entries = self.read_cached_entries().unwrap_or_default();
+
+        if cached_entries.is_empty() {
+            apps.clear();
+            return Ok(());
+        }
+
+        let mut updated = Vec::with_capacity(cached_entries.len());
+        for cached in cached_entries {
+            updated.push(cached.into_app_descriptor());
+        }
+
+        preserve_icon_handles(apps, &mut updated);
+        *apps = updated;
+        Ok(())
+    }
+
+    /// Refresh the cache in-place and return top apps with preserved icon handles.
+    pub fn refresh_with_top(
+        &mut self,
+        apps: &mut Vec<AppDescriptor>,
+        top_count: usize,
+    ) -> anyhow::Result<Vec<AppDescriptor>> {
+        self.refresh_in_place(apps)?;
+
+        let mut top_apps = if top_count > 0 {
+            self.top_apps(top_count)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|app| app.exec_count > 0)
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        preserve_icon_handles(apps, &mut top_apps);
+        Ok(top_apps)
+    }
+
     /// Load from cache when present, falling back to the loader and populating icons.
-    pub fn load_from_apps_loader(&mut self) -> Vec<AppDescriptor> {
+    pub fn load_apps(&mut self) -> Vec<AppDescriptor> {
         self.read_all().unwrap_or_else(|| {
             let apps = (self.apps_loader)();
             let _ = self.build_snapshot_with_icons(&apps);
@@ -335,12 +376,12 @@ impl Cache {
 
     // Update the cache from local system and update usage stat
     /// Refresh from the loader and increment usage for the selected app.
-    pub fn update(&mut self, selected_app: &AppDescriptor) -> anyhow::Result<()> {
+    pub fn record_launch(&mut self, selected_app: &AppDescriptor) -> anyhow::Result<()> {
         self.update_from_loader(Some(selected_app.appid.as_str()))
     }
 
     /// Store a snapshot of apps, reusing cached icon data when possible.
-    pub fn store_snapshot(&mut self, apps: &[AppDescriptor]) -> anyhow::Result<()> {
+    pub fn save_snapshot(&mut self, apps: &[AppDescriptor]) -> anyhow::Result<()> {
         let cached_icons: HashMap<String, Option<CachedIcon>> = self
             .read_cached_entries()
             .unwrap_or_default()
@@ -401,7 +442,7 @@ impl Cache {
         Some(app_descriptors)
     }
 
-    pub fn build_snapshot_with_icons(&mut self, apps: &[AppDescriptor]) -> anyhow::Result<()> {
+    fn build_snapshot_with_icons(&mut self, apps: &[AppDescriptor]) -> anyhow::Result<()> {
         let snapshot = apps.iter().cloned().map(|app| {
             let mut cached = CachedAppDescriptor::from_app_descriptor(app, None);
             populate_icon_data(&mut cached);
@@ -419,7 +460,7 @@ fn resolve_db_file_path() -> PathBuf {
 }
 
 /// Remove the cache directory for the default namespace.
-pub fn delete_cache_dir() -> std::io::Result<()> {
+pub fn clear_cache_dir() -> std::io::Result<()> {
     let path = resolve_db_file_path();
     if path.exists() {
         std::fs::remove_dir_all(path)?;
@@ -515,7 +556,7 @@ mod tests {
             icon_handle: IconHandle::NotLoaded,
         };
 
-        cache.store_snapshot(&[app]).expect("store snapshot");
+        cache.save_snapshot(&[app]).expect("store snapshot");
         let apps = cache.read_all().expect("read snapshot");
 
         assert!(matches!(apps[0].icon_handle, IconHandle::Raster(_)));
@@ -531,7 +572,7 @@ mod tests {
             make_app("app-3", "Beta", 2, None),
         ];
 
-        cache.store_snapshot(&apps).expect("store snapshot");
+        cache.save_snapshot(&apps).expect("store snapshot");
         let apps = cache.read_all().expect("read snapshot");
 
         let titles: Vec<&str> = apps.iter().map(|app| app.title.as_str()).collect();
@@ -578,6 +619,46 @@ mod tests {
     }
 
     #[test]
+    fn test_refresh_preserves_icon_handle() {
+        let _guard = prepare_test_cache();
+        let cache_home = set_test_cache_home();
+        let icon_path = cache_home.join("test-refresh-handle.png");
+        let mut png_bytes = Vec::new();
+        let image = image::RgbaImage::from_pixel(1, 1, image::Rgba([10, 20, 30, 255]));
+        let encoder = image::codecs::png::PngEncoder::new(&mut png_bytes);
+        encoder
+            .write_image(
+                image.as_raw(),
+                image.width(),
+                image.height(),
+                image::ExtendedColorType::Rgba8,
+            )
+            .expect("encode refresh handle icon");
+        std::fs::write(&icon_path, &png_bytes).expect("write refresh handle icon");
+
+        let mut cache = Cache::new(shared_loader);
+        let initial_app = make_app("app-1", "Cached App", 0, Some(icon_path.clone()));
+        cache
+            .build_snapshot_with_icons(&[initial_app.clone()])
+            .expect("seed cache");
+
+        let apps_before = cache.read_all().expect("read initial snapshot");
+        let initial_handle = apps_before[0].icon_handle.clone();
+
+        let refreshed_app = AppDescriptor {
+            icon_path: None,
+            exec_count: 0,
+            ..initial_app
+        };
+        *LOADER_APPS.lock().expect("lock loader apps") = vec![refreshed_app];
+
+        cache.refresh().expect("refresh cache");
+        let apps_after = cache.read_all().expect("read refreshed snapshot");
+
+        assert_eq!(apps_after[0].icon_handle, initial_handle);
+    }
+
+    #[test]
     fn test_refresh_drops_missing_apps() {
         let _guard = prepare_test_cache();
         let mut cache = Cache::new(shared_loader);
@@ -585,7 +666,7 @@ mod tests {
             make_app("app-1", "Keep", 1, None),
             make_app("app-2", "Drop", 2, None),
         ];
-        cache.store_snapshot(&apps).expect("store snapshot");
+        cache.save_snapshot(&apps).expect("store snapshot");
 
         *LOADER_APPS.lock().expect("lock loader apps") = vec![make_app("app-1", "Keep", 0, None)];
         cache.refresh().expect("refresh cache");

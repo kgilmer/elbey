@@ -19,7 +19,7 @@ use crate::PROGRAM_NAME;
 
 fn persist_cache_snapshot(apps: &[AppDescriptor]) {
     if let Ok(mut cache) = CACHE.lock() {
-        if let Err(e) = cache.store_snapshot(apps) {
+        if let Err(e) = cache.save_snapshot(apps) {
             eprintln!("Failed to persist cache snapshot: {e}");
         }
     }
