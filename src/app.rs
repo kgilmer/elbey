@@ -1,6 +1,5 @@
 //! Functions and other types for `iced` UI to view, filter, and launch apps
 use std::cmp::{max, min};
-use std::process::exit;
 
 use elbey_cache::AppDescriptor;
 use iced::keyboard::key::Named;
@@ -14,16 +13,6 @@ use iced::{border, event, window, Alignment, Element, Event, Length, Pixels, Tas
 use iced_layershell::to_layer_message;
 
 use crate::values::*;
-use crate::CACHE;
-use crate::PROGRAM_NAME;
-
-fn persist_cache_snapshot(apps: &[AppDescriptor]) {
-    if let Ok(mut cache) = CACHE.lock() {
-        if let Err(e) = cache.save_snapshot(apps) {
-            eprintln!("Failed to persist cache snapshot: {e}");
-        }
-    }
-}
 
 fn default_icon_handle() -> IconHandle {
     FALLBACK_ICON_HANDLE.clone()
@@ -84,6 +73,10 @@ pub struct ElbeyFlags {
      * A function that launches a process from a `DesktopEntry`
      */
     pub app_launcher: fn(&AppDescriptor) -> anyhow::Result<()>, //TODO ~ return a task that exits app
+    /**
+     * Invoked when the UI requests app shutdown (escape or lost focus).
+     */
+    pub close_handler: fn(&[AppDescriptor]),
 
     pub theme: Theme,
 
@@ -239,8 +232,8 @@ impl Elbey {
             // Handle keyboard entries
             ElbeyMessage::KeyEvent(key) => match key {
                 Key::Named(Named::Escape) => {
-                    persist_cache_snapshot(&self.state.apps);
-                    exit(0)
+                    (self.flags.close_handler)(&self.state.apps);
+                    Task::none()
                 }
                 Key::Named(Named::ArrowUp) => {
                     self.navigate_items(-1);
@@ -273,8 +266,7 @@ impl Elbey {
             }
             ElbeyMessage::LostFocus => {
                 if self.state.received_focus {
-                    persist_cache_snapshot(&self.state.apps);
-                    exit(0);
+                    (self.flags.close_handler)(&self.state.apps);
                 }
                 Task::none()
             }
@@ -452,6 +444,7 @@ mod tests {
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: test_launcher,
+            close_handler: |_| {},
             theme: DEFAULT_THEME,
             icon_size: 48,
             hint: DEFAULT_HINT.to_string(),
@@ -472,6 +465,7 @@ mod tests {
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: test_launcher,
+            close_handler: |_| {},
             theme: DEFAULT_THEME,
             icon_size: 48,
             hint: DEFAULT_HINT.to_string(),
@@ -493,6 +487,7 @@ mod tests {
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: test_launcher,
+            close_handler: |_| {},
             theme: DEFAULT_THEME,
             icon_size: 48,
             hint: DEFAULT_HINT.to_string(),
@@ -513,6 +508,7 @@ mod tests {
         let (mut unit, _) = Elbey::new(ElbeyFlags {
             apps_loader: TEST_ENTRY_LOADER,
             app_launcher: |_| Ok(()),
+            close_handler: |_| {},
             theme: DEFAULT_THEME,
             icon_size: 48,
             hint: DEFAULT_HINT.to_string(),
