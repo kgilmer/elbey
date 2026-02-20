@@ -1,15 +1,13 @@
 //! Elbey - a desktop app launcher
 #![doc(html_logo_url = "https://github.com/kgilmer/elbey/blob/main/elbey.svg")]
-mod app;
-mod values;
 
 use std::process::exit;
 use std::sync::{Arc, Mutex};
 
-use crate::values::*;
 use anyhow::Context;
-use app::{Elbey, ElbeyFlags};
 use argh::FromArgs;
+use elbey::app::{Elbey, ElbeyFlags};
+use elbey::values::*;
 use elbey_cache::{clear_cache_dir, AppDescriptor, Cache};
 use freedesktop_desktop_entry::{
     current_desktop, default_paths, get_languages_from_env, DesktopEntry, Iter,
@@ -142,6 +140,7 @@ fn main() -> Result<(), iced_layershell::Error> {
     let flags = ElbeyFlags {
         apps_loader: load_apps,
         app_launcher: launch_app,
+        close_handler: persist_cache_snapshot_and_exit,
         theme,
         icon_size: args.icon_size.unwrap_or(DEFAULT_ICON_SIZE),
         hint: parse_hint(&args),
@@ -185,6 +184,15 @@ fn main() -> Result<(), iced_layershell::Error> {
     .theme(|state: &Elbey| Some(state.theme()))
     .settings(iced_settings)
     .run()
+}
+
+fn persist_cache_snapshot_and_exit(apps: &[AppDescriptor]) {
+    if let Ok(mut cache) = CACHE.lock() {
+        if let Err(e) = cache.save_snapshot(apps) {
+            eprintln!("Failed to persist cache snapshot: {e}");
+        }
+    }
+    exit(0);
 }
 
 /// Launch an app described by `entry`.  This implementation exits the process upon successful launch.
