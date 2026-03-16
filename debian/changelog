@@ -1,0 +1,5 @@
+elbey (0.2.0-1) testing; urgency=medium
+
+  * Package elbey 0.2.0 from crates.io using debcargo 2.7.6
+
+ -- Ken Gilmer <kgilmer@gmail.com>  Sat, 15 Feb 2025 13:50:37 -0800
